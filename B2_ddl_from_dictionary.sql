@@ -34,7 +34,7 @@ SELECT txt FROM (
     SELECT t.owner AS ow, t.table_name AS tb, 0 AS seq,
            'CREATE TABLE "' || t.owner || '"."' || t.table_name || '" (' AS txt
       FROM all_tables t
-     WHERE t.owner IN ('AIMS_DEV','AIMSC_DEV')
+     WHERE t.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
     UNION ALL
     -- 컬럼
     SELECT c.owner, c.table_name, c.column_id,
@@ -58,14 +58,14 @@ SELECT txt FROM (
                                       WHERE c2.owner = c.owner AND c2.table_name = c.table_name )
                 THEN '' ELSE ',' END
       FROM all_tab_columns c
-     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV')
+     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
        AND EXISTS ( SELECT 1 FROM all_tables t2
                      WHERE t2.owner = c.owner AND t2.table_name = c.table_name )
     UNION ALL
     -- 푸터
     SELECT t.owner, t.table_name, 999999, ');'
       FROM all_tables t
-     WHERE t.owner IN ('AIMS_DEV','AIMSC_DEV')
+     WHERE t.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
 ) ORDER BY ow, tb, seq;
 
 SPOOL OFF
@@ -81,7 +81,7 @@ SELECT txt FROM (
            || c.constraint_name || '" '
            || CASE c.constraint_type WHEN 'P' THEN 'PRIMARY KEY (' ELSE 'UNIQUE (' END AS txt
       FROM all_constraints c
-     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV') AND c.constraint_type IN ('P','U')
+     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND c.constraint_type IN ('P','U')
     UNION ALL
     SELECT cc.owner, cc.constraint_name, cc.position,
            '  "' || cc.column_name || '"' ||
@@ -90,14 +90,14 @@ SELECT txt FROM (
                                         AND cc2.constraint_name = cc.constraint_name )
                 THEN '' ELSE ',' END
       FROM all_cons_columns cc
-     WHERE cc.owner IN ('AIMS_DEV','AIMSC_DEV')
+     WHERE cc.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
        AND EXISTS ( SELECT 1 FROM all_constraints c2
                      WHERE c2.owner = cc.owner AND c2.constraint_name = cc.constraint_name
                        AND c2.constraint_type IN ('P','U') )
     UNION ALL
     SELECT c.owner, c.constraint_name, 999999, ');'
       FROM all_constraints c
-     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV') AND c.constraint_type IN ('P','U')
+     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND c.constraint_type IN ('P','U')
 ) ORDER BY ow, cn, seq;
 
 SPOOL OFF
@@ -116,7 +116,7 @@ BEGIN
   -- DEFAULT
   FOR r IN ( SELECT owner, table_name, column_name, data_default
                FROM all_tab_columns
-              WHERE owner IN ('AIMS_DEV','AIMSC_DEV')
+              WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
               ORDER BY owner, table_name, column_id ) LOOP
     v_def := r.data_default;
     IF v_def IS NOT NULL AND TRIM(v_def) IS NOT NULL THEN
@@ -128,7 +128,7 @@ BEGIN
   -- CHECK  (NOT NULL 은 이미 CREATE TABLE 에 반영했으므로 제외)
   FOR r IN ( SELECT owner, table_name, constraint_name, search_condition
                FROM all_constraints
-              WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND constraint_type = 'C'
+              WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND constraint_type = 'C'
               ORDER BY owner, table_name, constraint_name ) LOOP
     v_cond := r.search_condition;
     IF v_cond IS NOT NULL
@@ -162,7 +162,7 @@ DECLARE
 BEGIN
   FOR r IN ( SELECT owner, view_name, text
                FROM all_views
-              WHERE owner IN ('AIMS_DEV','AIMSC_DEV')
+              WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
               ORDER BY owner, view_name ) LOOP
 
     v_total := v_total + 1;
@@ -227,7 +227,7 @@ SELECT txt FROM (
            'ALTER TABLE "' || c.owner || '"."' || c.table_name || '" ADD CONSTRAINT "'
            || c.constraint_name || '" FOREIGN KEY (' AS txt
       FROM all_constraints c
-     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV') AND c.constraint_type = 'R'
+     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND c.constraint_type = 'R'
     UNION ALL
     SELECT cc.owner, cc.constraint_name, cc.position,
            '  "' || cc.column_name || '"' ||
@@ -236,7 +236,7 @@ SELECT txt FROM (
                                         AND cc2.constraint_name = cc.constraint_name )
                 THEN '' ELSE ',' END
       FROM all_cons_columns cc
-     WHERE cc.owner IN ('AIMS_DEV','AIMSC_DEV')
+     WHERE cc.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
        AND EXISTS ( SELECT 1 FROM all_constraints c2
                      WHERE c2.owner = cc.owner AND c2.constraint_name = cc.constraint_name
                        AND c2.constraint_type = 'R' )
@@ -245,7 +245,7 @@ SELECT txt FROM (
            ') REFERENCES "' || rc.owner || '"."' || rc.table_name || '" ('
       FROM all_constraints c
       JOIN all_constraints rc ON rc.owner = c.r_owner AND rc.constraint_name = c.r_constraint_name
-     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV') AND c.constraint_type = 'R'
+     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND c.constraint_type = 'R'
     UNION ALL
     SELECT c.owner, c.constraint_name, 500000 + rcc.position,
            '  "' || rcc.column_name || '"' ||
@@ -256,14 +256,14 @@ SELECT txt FROM (
       FROM all_constraints c
       JOIN all_cons_columns rcc ON rcc.owner = c.r_owner
                                AND rcc.constraint_name = c.r_constraint_name
-     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV') AND c.constraint_type = 'R'
+     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND c.constraint_type = 'R'
     UNION ALL
     SELECT c.owner, c.constraint_name, 999999,
            ')' || CASE WHEN c.delete_rule = 'CASCADE' THEN ' ON DELETE CASCADE'
                        WHEN c.delete_rule = 'SET NULL' THEN ' ON DELETE SET NULL'
                        ELSE '' END || ';'
       FROM all_constraints c
-     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV') AND c.constraint_type = 'R'
+     WHERE c.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND c.constraint_type = 'R'
 ) ORDER BY ow, cn, seq;
 
 SPOOL OFF
@@ -279,7 +279,7 @@ SELECT txt FROM (
            || 'INDEX "' || i.owner || '"."' || i.index_name || '" ON "'
            || i.table_owner || '"."' || i.table_name || '" (' AS txt
       FROM all_indexes i
-     WHERE i.owner IN ('AIMS_DEV','AIMSC_DEV')
+     WHERE i.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
        AND i.index_type NOT LIKE 'LOB%'
        AND NOT EXISTS ( SELECT 1 FROM all_constraints c
                          WHERE c.owner = i.owner AND c.index_name = i.index_name
@@ -292,7 +292,7 @@ SELECT txt FROM (
                                                AND ic2.index_name = ic.index_name )
                 THEN '' ELSE ',' END
       FROM all_ind_columns ic
-     WHERE ic.index_owner IN ('AIMS_DEV','AIMSC_DEV')
+     WHERE ic.index_owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
        AND EXISTS ( SELECT 1 FROM all_indexes i2
                      WHERE i2.owner = ic.index_owner AND i2.index_name = ic.index_name
                        AND i2.index_type NOT LIKE 'LOB%'
@@ -302,7 +302,7 @@ SELECT txt FROM (
     UNION ALL
     SELECT i.owner, i.index_name, 999999, ');'
       FROM all_indexes i
-     WHERE i.owner IN ('AIMS_DEV','AIMSC_DEV')
+     WHERE i.owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
        AND i.index_type NOT LIKE 'LOB%'
        AND NOT EXISTS ( SELECT 1 FROM all_constraints c
                          WHERE c.owner = i.owner AND c.index_name = i.index_name
@@ -319,13 +319,13 @@ SPOOL B2_out_7_comments.sql
 SELECT 'COMMENT ON TABLE "' || owner || '"."' || table_name || '" IS '''
        || REPLACE(comments, '''', '''''') || ''';'
   FROM all_tab_comments
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND comments IS NOT NULL
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND comments IS NOT NULL
  ORDER BY owner, table_name;
 
 SELECT 'COMMENT ON COLUMN "' || owner || '"."' || table_name || '"."' || column_name || '" IS '''
        || REPLACE(comments, '''', '''''') || ''';'
   FROM all_col_comments
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND comments IS NOT NULL
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND comments IS NOT NULL
  ORDER BY owner, table_name, column_name;
 
 SPOOL OFF
@@ -344,7 +344,7 @@ SELECT 'CREATE SEQUENCE "' || sequence_owner || '"."' || sequence_name || '"'
        || CASE WHEN NVL(cache_size,0) > 0 THEN ' CACHE ' || cache_size ELSE ' NOCACHE' END
        || ';'
   FROM all_sequences
- WHERE sequence_owner IN ('AIMS_DEV','AIMSC_DEV')
+ WHERE sequence_owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
  ORDER BY sequence_owner, sequence_name;
 
 SPOOL OFF
@@ -365,3 +365,7 @@ PROMPT  - 뷰 정의문이 32767자를 넘으면 4_views 파일에 "추출 실�
 PROMPT    해당 뷰는 B1(DBMS_METADATA) 이나 수동으로 별도 추출해야 합니다.
 PROMPT    (대상 뷰는 01_source_check.sql 의 text_length 정렬 결과로 미리 알 수 있습니다)
 PROMPT ================================================================
+
+-- tbsql 이 SQL> 프롬프트에서 대기하지 않도록 반드시 종료한다.
+-- (없으면 스크립트 실행 후 입력 대기 상태가 되어 멈춘 것처럼 보인다)
+EXIT;

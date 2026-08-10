@@ -18,7 +18,7 @@ SPOOL 07_recompile.log
 PROMPT === 재컴파일 전 무효 객체 ===
 COL object_name FORMAT A40
 SELECT owner, object_type, object_name FROM all_objects
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND status <> 'VALID'
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND status <> 'VALID'
  ORDER BY 1,2,3;
 
 DECLARE
@@ -30,12 +30,12 @@ BEGIN
     v_pass := v_pass + 1;
 
     SELECT COUNT(*) INTO v_before FROM all_objects
-     WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND status <> 'VALID';
+     WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND status <> 'VALID';
 
     EXIT WHEN v_before = 0 OR v_pass > 5;
 
     FOR r IN ( SELECT owner, object_type, object_name FROM all_objects
-                WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND status <> 'VALID'
+                WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND status <> 'VALID'
                   AND object_type IN ('VIEW','SYNONYM','PROCEDURE','FUNCTION','PACKAGE','TRIGGER') ) LOOP
       BEGIN
         EXECUTE IMMEDIATE 'ALTER ' || r.object_type || ' "' || r.owner || '"."'
@@ -46,7 +46,7 @@ BEGIN
     END LOOP;
 
     SELECT COUNT(*) INTO v_after FROM all_objects
-     WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND status <> 'VALID';
+     WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND status <> 'VALID';
 
     DBMS_OUTPUT.PUT_LINE('pass ' || v_pass || ': 무효 ' || v_before || ' -> ' || v_after);
 
@@ -58,7 +58,7 @@ END;
 PROMPT
 PROMPT === 재컴파일 후 남은 무효 객체  ** 0건이어야 정상 ** ===
 SELECT owner, object_type, object_name FROM all_objects
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND status <> 'VALID'
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND status <> 'VALID'
  ORDER BY 1,2,3;
 
 PROMPT
@@ -69,7 +69,7 @@ PROMPT --   SELECT * FROM all_errors WHERE owner='AIMS_DEV' AND name='<뷰명>';
 PROMPT -- 흔한 원인: 참조 테이블 누락, 다른 스키마 객체에 대한 권한 부족, 소스에서도 무효였던 뷰
 
 SELECT owner, name, type, line, position, text FROM all_errors
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') ORDER BY owner, name, sequence;
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') ORDER BY owner, name, sequence;
 
 SPOOL OFF
 
@@ -78,3 +78,7 @@ PROMPT ================================================================
 PROMPT 소스에서도 무효였던 객체는 01_source_check.sql [4] 의 "무효 객체" 목록과 대조하세요.
 PROMPT 소스에서 이미 무효였다면 타겟에서 무효인 것이 정상입니다.
 PROMPT ================================================================
+
+-- tbsql 이 SQL> 프롬프트에서 대기하지 않도록 반드시 종료한다.
+-- (없으면 스크립트 실행 후 입력 대기 상태가 되어 멈춘 것처럼 보인다)
+EXIT;

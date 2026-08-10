@@ -1,0 +1,15 @@
+# 실행 산출물 — 저장소에 담지 않는다
+results/
+*.log
+*.dat
+*_out_*.sql
+*_gen_*.sql
+08_expected_counts.log
+06_compare_report.txt
+dump_backup/
+work/
+
+# 로컬 환경
+.DS_Store
+*.bak
+*.bak.*

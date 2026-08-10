@@ -1,6 +1,30 @@
 # Tibero 데이터 이전(복제) 실행 절차
 
-공동 작업용 Tibero DB의 `AIMS_DEV` / `AIMSC_DEV` 스키마를 사내 **docker tibero7** 인스턴스로 복제한다.
+> ## ✅ 이관 완료 (2026-08-10)
+>
+> | 항목 | 결과 |
+> |---|---|
+> | 테이블 건수 | **416/416 일치** — 4,802,221행 |
+> | 무효 객체 | 0건 |
+> | 뷰 실제 조회 | 성공 111 / 실패 0 |
+> | 비활성·미검증 제약조건 | 0건 |
+> | 사용 불가 인덱스 | 0건 |
+> | 한글 바이트 | 소스와 동일 (`a8,f6,3f,...`) |
+>
+> 타겟: `tibero7_ut` 컨테이너 / `TAIMS` / **MSWIN949** / 호스트 포트 18629
+> 접속: `AIMS_EX` · `AIMS_DEV` · `AIMSC_DEV` (비밀번호 = 계정명)
+>
+> **⚠ 라이선스가 2026-08-19 만료된다.** 이후 계속 쓰려면 갱신이 필요하다.
+>
+> 덤프와 로그는 `~/alex/tibero7_ut/work/` 에 남아 있다(볼륨). 재적재가 필요하면
+> 추출 없이 `03_export_import.sh import` 만 다시 돌리면 된다.
+
+공동 작업용 Tibero DB(`121.137.106.217:58629/TAIMS`)의 `AIMS_EX` / `AIMS_DEV` / `AIMSC_DEV` 스키마를
+사내 서버의 **docker `tibero7_ut`** 인스턴스로 복제한다.
+
+기존 `tibero7` 컨테이너에도 `AIMS_DEV` 가 있으나 **개발용이라 보존해야 하므로 건드리지 않는다.**
+스키마 rename 은 Oracle 호환 DB에서 불가능하고, 다른 스키마명으로 적재하면 뷰·시노님 정의문이 깨진다.
+그래서 별도 인스턴스(`tibero7_ut`)를 새로 만들었다 — `docker-compose.yml` 참고.
 
 ## 왜 기존 덤프를 쓰지 않는가
 
@@ -28,6 +52,104 @@
 | `07_recompile_invalid.sql` | Phase 3 말 | 뷰 재컴파일 **(변경 발생, 데이터 영향 없음)** |
 | `05_verify.sql` | Phase 4 | 타겟 검증값 수집 (읽기 전용) |
 | `06_compare.sh` | Phase 4 | 소스 기준값 대조 리포트 |
+| `sync.sh` | 전 단계 | 맥 ↔ 서버 ↔ 컨테이너 파일 동기화 |
+| `docker-compose.yml` | Phase 2 | 타겟 인스턴스 `tibero7_ut` 정의 (**MSWIN949** / DB_NAME=TAIMS) |
+| `04b_target_create.sql` | Phase 2 | 테이블스페이스 4개 + 계정 3개 생성 **(변경 발생)** |
+| `08_expected_from_exportlog.sh` | Phase 4 | 추출 로그에서 기대 건수 산출 — **검증의 기준값** |
+| `01b`/`01c` | Phase 0 | 이관 범위·시노님 대상 스키마 확정 (읽기 전용) |
+
+## 파일 동기화
+
+스크립트는 맥에서 편집하고, 서버에서 실행하고, SQL은 컨테이너 안에서 돌아간다. 3단 경로를 `sync.sh` 로 오간다.
+
+```
+맥 ./              --up-->   서버 ~/alex/tibero7_ut/migration   --in-->   컨테이너 /tmp/tbmig
+맥 ./results/    <--down--   서버 ~/alex/tibero7_ut/migration  <--out--   컨테이너 /tmp/tbmig
+```
+
+```bash
+REMOTE=bamboos@192.168.0.101 DRYRUN=0 ./sync.sh push   # up + in  (배포)
+REMOTE=bamboos@192.168.0.101 DRYRUN=0 ./sync.sh pull   # out + down (로그 회수)
+```
+
+기본값 `DRYRUN=1` 이라 `rsync -n` 으로 목록만 보여준다. 서버에서 직접 실행할 때는 `REMOTE=` 로 비운다.
+
+전송 필터는 방향마다 다르다. **up** 은 `*.sh` `*.sql` `*.md` 만 올리고 `--delete` 를 쓰지 않는다 — 서버에서 생성된 로그를 지우지 않기 위해서다. **down** 은 `*.log` `*_out_*.sql` `*_gen_*.sql` `*.txt` 만 `./results/` 로 받는다. 원본과 산출물이 섞이지 않는다.
+
+## 확정된 이관 범위 (2026-08-10 소스 실측)
+
+| 스키마 | 객체 | 용량 | 구성 |
+|---|---|---|---|
+| `AIMS_EX` | 117 | **954MB** | 테이블 101, 인덱스 16. 뷰·파티션 없음. BLOB 186MB |
+| `AIMS_DEV` | 1,186 | 127MB | 테이블 158, 뷰 58, 시노님 101, 파티션 81, 패키지 1 |
+| `AIMSC_DEV` | 1,174 | 104MB | 테이블 157, 뷰 53, 시노님 101, 파티션 81, 패키지 1 |
+| 합계 | | **1,185MB** | |
+
+`LBACSYS` 는 Tibero 라벨보안 시스템 계정이라 대상이 아니다.
+
+**적재 순서는 `AIMS_EX` → `AIMS_DEV` → `AIMSC_DEV`** 다. `AIMS_DEV`/`AIMSC_DEV` 의 시노님 101개가 전부 `AIMS_EX` 의 동명 테이블을 가리키므로, 대상이 먼저 존재해야 한다. `ALL_SYNONYMS` 에 `DB_LINK` 컬럼 자체가 없어 **원격 참조는 없다** — 전부 같은 DB 안이다.
+
+### 처음 파악과 달라진 점
+
+DBeaver 덤프의 259개 파일은 **테이블 158개 + 시노님 101개**였다. 즉 파일 목록의 40%가 `AIMS_EX` 의 테이블을 시노님으로 본 것이고, 실데이터 대부분(954MB)이 `AIMS_EX` 에 있다. 처음 계획의 2개 스키마 범위로는 이관이 성립하지 않는다.
+
+### 기준 스냅샷 (2026-08-10 실측, 검증의 기준값)
+
+| 스키마 | 행 수 | 비고 |
+|---|---|---|
+| `AIMS_EX` | 약 450만 | 실질적으로 이관 작업의 전부 |
+| `AIMS_DEV` | 약 1만 | 설정·코드성 데이터 위주 |
+| `AIMSC_DEV` | **0** | 157개 테이블 전부 비어 있음 — 사실상 DDL만 옮기는 작업 |
+
+`AIMS_EX` 상위: `T_TIPG_TBSP_STAT_01L` 879,615 · `T_TIPE_EMBR_STAT_01N` 835,460 · `T_TIPD_VDS_CWNO_HR_01S` 486,744 · `T_TIPB_LDS_STAT_01L` 295,568 · `T_TIPB_LCS_STAT_01L` 264,178 · `T_TIPG_DB_LOCK_01L` 242,360
+
+**FK·UNIQUE·시퀀스가 0건이다.** 제약조건은 PK(158/157/7)와 NOT NULL 계열(`C`)뿐이다. 따라서 적재 순서 제약은 **시노님 대상인 `AIMS_EX` 선행** 하나뿐이고, `B1_out_3_fk.sql` / `B1_out_6_sequences.sql` 은 빈 파일이 된다.
+
+`AIMS_EX` 는 테이블 101개 중 PK가 7개뿐이라, 적재 후 **건수 대조가 사실상 유일한 무결성 검증 수단**이다.
+
+기준 파일: `02_baseline_meta.log`, `02_baseline_counts.log`(476개 테이블), `02_baseline_view_counts.log`(111개 뷰)
+
+### 덤프 1.2GB × 2의 정체
+
+두 덤프가 똑같이 1.2GB였던 이유는 **양쪽 모두 시노님을 통해 같은 `AIMS_EX` 데이터를 중복으로 담았기** 때문이다. `AIMSC_DEV` 덤프의 0byte 파일 165개 = 자기 테이블 157개(전부 빈 테이블) + 빈 시노님 대상 8개. 숫자가 정확히 맞는다.
+
+### 경로 B2는 탈락
+
+소스에 **RANGE 파티션 테이블이 162개** 있다. 딕셔너리 뷰만으로는 파티션 정의를 재현할 수 없다. `DBMS_METADATA` 는 정상 동작이 확인됐으므로 **경로 A(tbExport) 주력, B1 보조**로 간다. `B2` 는 참고용으로만 남긴다.
+
+### Tibero 딕셔너리는 Oracle과 다르다
+
+스크립트 작성 중 실제로 걸린 차이들:
+
+| 뷰 | Tibero 실제 컬럼 | Oracle 기준 (없음) |
+|---|---|---|
+| `ALL_VIEWS` | `OWNER, VIEW_NAME, TEXT` | `TEXT_LENGTH` |
+| `ALL_SYNONYMS` | `OWNER, SYNONYM_NAME, ORG_OBJECT_OWNER, ORG_OBJECT_NAME` | `TABLE_OWNER, TABLE_NAME, DB_LINK` |
+| `ALL_DEPENDENCIES` | `OWNER, NAME, TYPE, PARENT_OBJ_OWNER, PARENT_OBJ_NAME, PARENT_OBJ_TYPE` | `REFERENCED_*` |
+| 캐릭터셋 | `NLS_LANG_AT_BOOT` — **DB 캐릭터셋이 아니다** | `NLS_CHARACTERSET` |
+
+### 캐릭터셋 — 초기 판단을 뒤집은 사실
+
+**소스 DB는 UTF8이 아니라 MSWIN949(CP949)다.**
+
+처음에 `NLS_LANG_AT_BOOT=UTF8` 을 DB 캐릭터셋으로 읽었는데 이는 오판이었다. 그 값은 인스턴스 기동 시점의 클라이언트 NLS 이지 DB 캐릭터셋이 아니다. 소스와 UTF8로 만든 타겟이 이 값은 똑같은데 실제 저장 바이트는 달랐던 것이 결정적 증거다.
+
+실측 근거:
+
+- `tbexport` 가 매 실행마다 출력한 `Export character set: MSWIN949` — 접속한 DB의 실제 캐릭터셋이다
+- 소스 `DUMP`: `신월여의지하도로종점` = **10자 / 20바이트**, `bd,c5,bf,f9,bf,a9,...` (CP949 2바이트 문자)
+
+**결과**: UTF8 타겟에 적재하면 `tbimport` 가 CP949 → UTF-8 로 정상 변환하지만 **길이가 1.5배**가 된다. 한글 11자 = CP949 22바이트 → UTF-8 33바이트 → `VARCHAR(30 BYTE)` 초과. 실제로 4개 테이블이 이 오류로 부분 적재됐다(`T_TIPA_NODE_01M` 679/811 등).
+
+전수 조사 결과 **VARCHAR/CHAR BYTE 컬럼 6,131개 중 2,469개**가 UTF-8 변환 시 정의 길이를 초과한다. 컬럼을 넓히는 대안은 성립하지 않는다.
+
+**결론**: 타겟을 `CHAR_SET=MSWIN949` 로 재생성해 소스와 문자셋을 맞춘다. 변환이 없으므로 길이 초과가 사라지고 바이트 단위로 동일한 복제본이 된다. UT 환경은 운영과 같게 동작해야 한다.
+
+부수적으로 확인된 것: `tbexport`/`tbimport` 에는 문자셋 파라미터가 없다. 캐릭터셋은 DB에서 결정되며 클라이언트 환경변수(`TB_NLS_LANG` 등)로 바꿀 수 없다.
+
+### 한글 손상은 소스 원본 문제
+
+`AIMS_EX.T_TIPA_VMS_SYBL_01I.SYBL_NM` 의 바이트가 `a8,f6,**3f**,a1,c6,**3f**,...` 다. CP949 대역 바이트에 `3f`(`?`)가 섞여 있다 — 소스 DB에 이미 일부 문자가 `?` 로 치환된 채 저장돼 있다. **DBeaver 추출 탓이 아니다.** 타겟도 MSWIN949 이므로 tbExport/tbImport 는 이 바이트를 변환 없이 그대로 옮긴다. 이관으로 인한 추가 손실은 없고, 원본 복구는 이 작업 범위 밖이다.
 
 ## VIEW 처리
 
@@ -45,25 +167,46 @@
 ### Phase 0 — 환경 확인 (되돌릴 것 없음)
 
 ```bash
-./00_env_check.sh tibero7 121.137.106.217 58629
+./00_env_check.sh tibero7_ut 121.137.106.217 58629
 ```
 
 **확인된 환경** (2026-08-10 실행 결과)
 
 | 항목 | 값 |
 |---|---|
-| 컨테이너 | `tibero7` / `tiberoofficial/tibero:latest` |
+| 작업 컨테이너 | `tibero7_ut` / `tiberoofficial/tibero:latest` (호스트 포트 18629) |
 | TB_HOME | `/opt/tibero7`, edition = standard |
 | 유틸리티 | `tbexport` / `tbimport` **7.2** 존재 → **경로 A 가능** |
-| 타겟 DB | `localhost:8629`, DB_NAME=`tibero` |
-| 소스 도달 | `121.137.106.217:58629` 도달 가능 |
+| 타겟 DB | 컨테이너 내부 `localhost:8629`, DB_NAME=**`TAIMS`** |
+| 캐릭터셋 | 소스·타겟 모두 **MSWIN949** (아래 "캐릭터셋 — 초기 판단을 뒤집은 사실" 참고) |
+| 소스 | `121.137.106.217:58629/TAIMS`, Tibero 7.2 |
 | 디스크 | 2.5T 여유 (충분) |
+| ⚠ 라이선스 | **2026-08-19 만료** (30일 데모). 이후 사용하려면 갱신 필요 |
+
+> **이관 작업은 `tibero7_ut` 컨테이너 "안에서" 수행한다.** 타겟이 자기 자신이라 `localhost:8629`
+> 로 닿고, 소스는 외부 IP 라 그대로 닿는다. `tibero7` 컨테이너에서 실행하면 `localhost` 가
+> 자기 자신을 가리켜 타겟에 도달하지 못한다.
 
 > **주의**: `tbexport`/`tbimport` 는 tbdsn DSN을 쓰지 않는다. `IP` / `PORT` / `SID` 파라미터로 직접 접속하고, 문법은 `parameter=value` 나열식이다. `03_export_import.sh` 는 이 문법으로 작성돼 있다.
 >
 > 다만 `tbsql` (01/02/05 스크립트 실행용)은 DSN이 필요할 수 있다. `tbsql user/pass@IP:PORT:SID` 형식이 안 되면 아래처럼 등록한다.
 
+**소스 접속 정보 (확정)**
+
+| 항목 | 값 |
+|---|---|
+| HOST | `121.137.106.217` |
+| PORT | `58629` |
+| SID (DB_NAME) | `TAIMS` |
+
 `$TB_HOME/client/config/tbdsn.tbr` 에 `SRC` DSN을 추가하고 접속을 확인한 뒤:
+
+```bash
+./03_export_import.sh dsn            # DRYRUN — 추가될 내용 확인
+DRYRUN=0 ./03_export_import.sh dsn   # 실제 등록 (.bak 백업 후)
+```
+
+타겟은 `gen_tip.sh` 가 만든 `TAIMS` 항목을 그대로 쓴다.
 
 ```bash
 docker cp 01_source_check.sql <컨테이너>:/tmp/
@@ -177,3 +320,17 @@ tbsql <user>/<pw>@TGT @05_gen_view_counts.sql
 
 - `AIMS_DEV/T_TIPG_TBSP_STAT_01N_*.sql` 은 13:24 / 13:37 두 벌 존재 (둘 다 4425 bytes, 중복 재추출)
 - 값 안에 개행이 포함된 행이 있으므로, 혹시 이 덤프를 다루게 되면 파일 분할은 반드시 `^INSERT INTO` 문장 경계로 해야 한다
+
+
+## 실행 중 걸린 것들 (재현 시 참고)
+
+| 증상 | 원인 | 대응 |
+|---|---|---|
+| `Mode confliction` | `tbexport` 의 `FULL`/`USER`/`TABLE` 은 상호 배타적 모드 | 테이블 단위는 `TABLE=스키마.테이블` 만 |
+| tbsql 실행 후 터미널 멈춤 | 스크립트 끝에 `EXIT;` 없어 프롬프트 대기 | 모든 `.sql` 과 **생성되는 스크립트**에 `EXIT;` |
+| `TBS-70003` (host:port:sid) | `tbsql` 은 DSN만 받음 | `tbdsn.tbr` 에 등록 (`03 dsn`). tbexport/tbimport 는 DSN 불필요 |
+| `--sysdba` 옵션 없음 | tbsql 에 해당 옵션 자체가 없음 | DSN 없이 `tbsql sys/<pw>` 로 로컬 접속 |
+| `TBR-11048` 길이 초과 | UTF8 타겟에서 CP949→UTF-8 변환으로 길이 1.5배 | 타겟을 MSWIN949 로 재생성 |
+| 건수가 아침 기준값과 불일치 | 소스가 가동 중이라 로그성 테이블이 증가 | `08_expected_from_exportlog.sh` 로 추출 시점 기준값 사용 |
+| `echo "A;B;"` 한 줄 실행 실패 | tbsql 은 문장 사이 개행 필요 | heredoc 사용 (`<<'EOF'`) |
+| 컨테이너 재생성 시 덤프 소실 | `/tmp/tbmig` 가 볼륨이 아니었음 | compose 에 `./work:/tmp/tbmig` 추가 |

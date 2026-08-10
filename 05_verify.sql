@@ -26,34 +26,54 @@ PROMPT
 PROMPT === 스키마별 객체 개수 ===
 COL owner FORMAT A20
 SELECT owner, object_type, COUNT(*) AS cnt FROM all_objects
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') GROUP BY owner, object_type ORDER BY 1,2;
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') GROUP BY owner, object_type ORDER BY 1,2;
 
 PROMPT
 PROMPT === 테이블/컬럼 개수 ===
 SELECT owner, COUNT(DISTINCT table_name) AS tables, COUNT(*) AS columns
-  FROM all_tab_columns WHERE owner IN ('AIMS_DEV','AIMSC_DEV') GROUP BY owner ORDER BY 1;
+  FROM all_tab_columns WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') GROUP BY owner ORDER BY 1;
 
 PROMPT
 PROMPT === 제약조건 개수 (유형별) ===
 SELECT owner, constraint_type, COUNT(*) AS cnt FROM all_constraints
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') GROUP BY owner, constraint_type ORDER BY 1,2;
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') GROUP BY owner, constraint_type ORDER BY 1,2;
 
 PROMPT
 PROMPT === 인덱스 개수 ===
 SELECT owner, COUNT(*) AS cnt FROM all_indexes
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') GROUP BY owner ORDER BY 1;
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') GROUP BY owner ORDER BY 1;
 
 PROMPT
-PROMPT === 뷰 목록 (정의문 길이 포함) ===
+PROMPT === 시노님 개수  (AIMS_DEV/AIMSC_DEV 각 101개 -> AIMS_EX) ===
+SELECT owner, COUNT(*) AS cnt FROM all_synonyms
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') GROUP BY owner ORDER BY 1;
+
+PROMPT
+PROMPT === 파티션 테이블 / 파티션 개수  ** 소스 기준 162개 테이블 ** ===
+SELECT owner, COUNT(*) AS part_tables, SUM(partition_count) AS partitions
+  FROM all_part_tables
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') GROUP BY owner ORDER BY 1;
+
+PROMPT
+PROMPT === 패키지 / 프로시저 ===
+COL object_name FORMAT A40
+SELECT owner, object_type, object_name, status FROM all_objects
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
+   AND object_type IN ('PACKAGE','PACKAGE BODY','PROCEDURE','FUNCTION','TRIGGER','TYPE')
+ ORDER BY 1,2,3;
+
+PROMPT
+PROMPT === 뷰 목록 ===
+PROMPT -- Tibero ALL_VIEWS 에는 TEXT_LENGTH 컬럼이 없다 (OWNER / VIEW_NAME / TEXT 뿐)
 COL view_name FORMAT A40
-SELECT owner, view_name, text_length FROM all_views
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') ORDER BY owner, view_name;
+SELECT owner, view_name FROM all_views
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') ORDER BY owner, view_name;
 
 PROMPT
 PROMPT === 시퀀스 ===
 COL sequence_name FORMAT A35
 SELECT sequence_owner, sequence_name, last_number, increment_by FROM all_sequences
- WHERE sequence_owner IN ('AIMS_DEV','AIMSC_DEV') ORDER BY 1,2;
+ WHERE sequence_owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') ORDER BY 1,2;
 
 SPOOL OFF
 
@@ -66,7 +86,7 @@ PROMPT === 무효 객체  ** 0건이어야 정상 ** ===
 PROMPT -- 뷰가 남아 있으면 07_recompile_invalid.sql 을 먼저 실행했는지 확인할 것
 COL object_name FORMAT A40
 SELECT owner, object_type, object_name, status FROM all_objects
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND status <> 'VALID' ORDER BY 1,2,3;
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND status <> 'VALID' ORDER BY 1,2,3;
 
 PROMPT
 PROMPT === 뷰 실제 조회 가능 여부  ** 컴파일만 통과하고 조회에서 깨지는 경우를 잡는다 ** ===
@@ -76,7 +96,7 @@ DECLARE
   v_ng  PLS_INTEGER := 0;
 BEGIN
   FOR r IN ( SELECT owner, view_name FROM all_views
-              WHERE owner IN ('AIMS_DEV','AIMSC_DEV') ORDER BY owner, view_name ) LOOP
+              WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') ORDER BY owner, view_name ) LOOP
     BEGIN
       EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM (SELECT * FROM "' || r.owner || '"."'
                         || r.view_name || '" WHERE ROWNUM <= 1)' INTO v_cnt;
@@ -95,33 +115,53 @@ PROMPT === 비활성/미검증 제약조건  ** 0건이어야 정상 ** ===
 COL constraint_name FORMAT A35
 SELECT owner, table_name, constraint_name, constraint_type, status, validated
   FROM all_constraints
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV')
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
    AND (status <> 'ENABLED' OR validated <> 'VALIDATED')
  ORDER BY 1,2,3;
 
 PROMPT
 PROMPT === 사용 불가 인덱스  ** 0건이어야 정상 ** ===
 SELECT owner, index_name, table_name, status FROM all_indexes
- WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND status NOT IN ('VALID','N/A') ORDER BY 1,2;
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX') AND status NOT IN ('VALID','N/A') ORDER BY 1,2;
 
 PROMPT
 PROMPT === 한글 무결성 확인  ** 소스의 01_source_check.sql [7] 결과와 바이트 단위로 일치해야 함 ** ===
 COL sybl_nm FORMAT A40
 COL raw_bytes FORMAT A120
 SELECT SYBL_NM, DUMP(SYBL_NM,16) AS raw_bytes
-  FROM AIMS_DEV.T_TIPA_VMS_SYBL_01I WHERE ROWNUM <= 5;
+  FROM AIMS_EX.T_TIPA_VMS_SYBL_01I WHERE ROWNUM <= 5;
 
 PROMPT
 PROMPT === 일반 한글 표본 ===
 SELECT CD_ID, CD_NM FROM AIMS_DEV.T_AAAA_CMMN01C WHERE ROWNUM <= 10;
 
 PROMPT
-PROMPT === LOB 건수 (바이트 총합은 컬럼명 확인 후 별도 실행) ===
-SELECT 'T_TIPA_VMS_SYBL_01I' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_TIPA_VMS_SYBL_01I;
-SELECT 'T_TIPA_LCS_SYBL_01I' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_TIPA_LCS_SYBL_01I;
-SELECT 'T_TIPB_VSL_PGRM_01I' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_TIPB_VSL_PGRM_01I;
-SELECT 'T_TIPE_LCS_LCTRL_01M' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_TIPE_LCS_LCTRL_01M;
-SELECT 'T_TIPE_VMST_DDRF_PHSE_OBJ_01L' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_TIPE_VMST_DDRF_PHSE_OBJ_01L;
+PROMPT === LOB 총량 (AIMS_EX 의 BLOB 5개 테이블) ===
+PROMPT -- 컬럼명은 01c_synonym_scope.sql [3] 결과로 확정됐다.
+PROMPT -- NULL LOB 가 섞이면 SUM 이 NULL 이 되므로 NVL 로 감싼다.
+SELECT 'T_TIPA_VMS_SYBL_01I' AS tab, COUNT(*) AS rows_cnt,
+       SUM(NVL(DBMS_LOB.GETLENGTH(SYBL_IMG_FILE_CTNT),0)
+         + NVL(DBMS_LOB.GETLENGTH(SYBL_RED_FILE_CTNT),0)
+         + NVL(DBMS_LOB.GETLENGTH(SYBL_GRN_FILE_CTNT),0)) AS lob_bytes
+  FROM AIMS_EX.T_TIPA_VMS_SYBL_01I;
+
+SELECT 'T_TIPA_LCS_SYBL_01I' AS tab, COUNT(*) AS rows_cnt,
+       SUM(NVL(DBMS_LOB.GETLENGTH(SYBL_IMG_FILE_CTNT),0)
+         + NVL(DBMS_LOB.GETLENGTH(SYBL_RED_FILE_CTNT),0)
+         + NVL(DBMS_LOB.GETLENGTH(SYBL_GRN_FILE_CTNT),0)) AS lob_bytes
+  FROM AIMS_EX.T_TIPA_LCS_SYBL_01I;
+
+SELECT 'T_TIPB_VSL_PGRM_01I' AS tab, COUNT(*) AS rows_cnt,
+       SUM(NVL(DBMS_LOB.GETLENGTH(PGRM_IMG_CTNT),0)) AS lob_bytes
+  FROM AIMS_EX.T_TIPB_VSL_PGRM_01I;
+
+SELECT 'T_TIPE_LCS_LCTRL_01M' AS tab, COUNT(*) AS rows_cnt,
+       SUM(NVL(DBMS_LOB.GETLENGTH(DRF_IMG_CTNT),0)) AS lob_bytes
+  FROM AIMS_EX.T_TIPE_LCS_LCTRL_01M;
+
+SELECT 'T_TIPE_VMST_DDRF_PHSE_OBJ_01L' AS tab, COUNT(*) AS rows_cnt,
+       SUM(NVL(DBMS_LOB.GETLENGTH(DRF_IMG_CTNT),0)) AS lob_bytes
+  FROM AIMS_EX.T_TIPE_VMST_DDRF_PHSE_OBJ_01L;
 
 SPOOL OFF
 
@@ -148,11 +188,12 @@ SELECT txt FROM (
            'SELECT ''' || owner || '.' || table_name || ''' tab, COUNT(*) cnt FROM "'
            || owner || '"."' || table_name || '" UNION ALL'
       FROM ( SELECT owner, table_name FROM all_tables
-              WHERE owner IN ('AIMS_DEV','AIMSC_DEV')
+              WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
               ORDER BY owner, table_name )
     UNION ALL SELECT 3, 0, 'SELECT ''~~END~~'' tab, -1 cnt FROM DUAL'       FROM DUAL
     UNION ALL SELECT 3, 1, ') ORDER BY tab;'                                FROM DUAL
     UNION ALL SELECT 3, 2, 'SPOOL OFF'                                      FROM DUAL
+    UNION ALL SELECT 3, 3, 'EXIT;'                                          FROM DUAL
 ) ORDER BY s1, s2;
 
 SPOOL OFF
@@ -175,9 +216,10 @@ SELECT txt FROM (
            'SELECT ''' || owner || '.' || view_name || ''' || ''  '' || COUNT(*) FROM "'
            || owner || '"."' || view_name || '";'
       FROM ( SELECT owner, view_name FROM all_views
-              WHERE owner IN ('AIMS_DEV','AIMSC_DEV')
+              WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
               ORDER BY owner, view_name )
     UNION ALL SELECT 3, 0, 'SPOOL OFF'                                     FROM DUAL
+    UNION ALL SELECT 3, 1, 'EXIT;'                                         FROM DUAL
 ) ORDER BY s1, s2;
 
 SPOOL OFF
@@ -195,3 +237,7 @@ PROMPT 그 뒤 소스 로그와 함께 ./06_compare.sh 로 대조하세요.
 PROMPT   ./06_compare.sh 02_baseline_counts.log 05_target_counts.log 02_baseline_meta.log 05_target_meta.log
 PROMPT   ./06_compare.sh 02_baseline_view_counts.log 05_target_view_counts.log
 PROMPT ================================================================
+
+-- tbsql 이 SQL> 프롬프트에서 대기하지 않도록 반드시 종료한다.
+-- (없으면 스크립트 실행 후 입력 대기 상태가 되어 멈춘 것처럼 보인다)
+EXIT;
