@@ -1,0 +1,197 @@
+-- Phase 4: 타겟 검증 (읽기 전용)
+--
+-- 실행:  tbsql <user>/<pw>@TGT @05_verify.sql
+--
+-- 산출물:
+--   05_target_meta.log       02_baseline_meta.log 과 대조
+--   05_gen_counts.sql        타겟 건수 스크립트 (자동 생성)
+--   05_target_counts.log     02_baseline_counts.log 과 대조
+--
+-- 대조는 06_compare.sh 로 수행한다.
+
+SET LINESIZE 300
+SET PAGESIZE 200
+SET TRIMSPOOL ON
+SET SERVEROUTPUT ON
+
+-- ---------------------------------------------------------------
+-- (1) 메타 개수 — 02 와 동일한 쿼리 (그대로 diff 하기 위해 순서·형식 유지)
+-- ---------------------------------------------------------------
+SPOOL 05_target_meta.log
+
+PROMPT === 접속/시각 ===
+SELECT USER AS connected_user, SYSDATE AS snapshot_at FROM DUAL;
+
+PROMPT
+PROMPT === 스키마별 객체 개수 ===
+COL owner FORMAT A20
+SELECT owner, object_type, COUNT(*) AS cnt FROM all_objects
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV') GROUP BY owner, object_type ORDER BY 1,2;
+
+PROMPT
+PROMPT === 테이블/컬럼 개수 ===
+SELECT owner, COUNT(DISTINCT table_name) AS tables, COUNT(*) AS columns
+  FROM all_tab_columns WHERE owner IN ('AIMS_DEV','AIMSC_DEV') GROUP BY owner ORDER BY 1;
+
+PROMPT
+PROMPT === 제약조건 개수 (유형별) ===
+SELECT owner, constraint_type, COUNT(*) AS cnt FROM all_constraints
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV') GROUP BY owner, constraint_type ORDER BY 1,2;
+
+PROMPT
+PROMPT === 인덱스 개수 ===
+SELECT owner, COUNT(*) AS cnt FROM all_indexes
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV') GROUP BY owner ORDER BY 1;
+
+PROMPT
+PROMPT === 뷰 목록 (정의문 길이 포함) ===
+COL view_name FORMAT A40
+SELECT owner, view_name, text_length FROM all_views
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV') ORDER BY owner, view_name;
+
+PROMPT
+PROMPT === 시퀀스 ===
+COL sequence_name FORMAT A35
+SELECT sequence_owner, sequence_name, last_number, increment_by FROM all_sequences
+ WHERE sequence_owner IN ('AIMS_DEV','AIMSC_DEV') ORDER BY 1,2;
+
+SPOOL OFF
+
+-- ---------------------------------------------------------------
+-- (2) 타겟 고유 점검
+-- ---------------------------------------------------------------
+SPOOL 05_target_health.log
+
+PROMPT === 무효 객체  ** 0건이어야 정상 ** ===
+PROMPT -- 뷰가 남아 있으면 07_recompile_invalid.sql 을 먼저 실행했는지 확인할 것
+COL object_name FORMAT A40
+SELECT owner, object_type, object_name, status FROM all_objects
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND status <> 'VALID' ORDER BY 1,2,3;
+
+PROMPT
+PROMPT === 뷰 실제 조회 가능 여부  ** 컴파일만 통과하고 조회에서 깨지는 경우를 잡는다 ** ===
+DECLARE
+  v_cnt PLS_INTEGER;
+  v_ok  PLS_INTEGER := 0;
+  v_ng  PLS_INTEGER := 0;
+BEGIN
+  FOR r IN ( SELECT owner, view_name FROM all_views
+              WHERE owner IN ('AIMS_DEV','AIMSC_DEV') ORDER BY owner, view_name ) LOOP
+    BEGIN
+      EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM (SELECT * FROM "' || r.owner || '"."'
+                        || r.view_name || '" WHERE ROWNUM <= 1)' INTO v_cnt;
+      v_ok := v_ok + 1;
+    EXCEPTION WHEN OTHERS THEN
+      v_ng := v_ng + 1;
+      DBMS_OUTPUT.PUT_LINE('조회 실패: ' || r.owner || '.' || r.view_name || ' -> ' || SQLERRM);
+    END;
+  END LOOP;
+  DBMS_OUTPUT.PUT_LINE('뷰 조회 성공 ' || v_ok || '건 / 실패 ' || v_ng || '건');
+END;
+/
+
+PROMPT
+PROMPT === 비활성/미검증 제약조건  ** 0건이어야 정상 ** ===
+COL constraint_name FORMAT A35
+SELECT owner, table_name, constraint_name, constraint_type, status, validated
+  FROM all_constraints
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV')
+   AND (status <> 'ENABLED' OR validated <> 'VALIDATED')
+ ORDER BY 1,2,3;
+
+PROMPT
+PROMPT === 사용 불가 인덱스  ** 0건이어야 정상 ** ===
+SELECT owner, index_name, table_name, status FROM all_indexes
+ WHERE owner IN ('AIMS_DEV','AIMSC_DEV') AND status NOT IN ('VALID','N/A') ORDER BY 1,2;
+
+PROMPT
+PROMPT === 한글 무결성 확인  ** 소스의 01_source_check.sql [7] 결과와 바이트 단위로 일치해야 함 ** ===
+COL sybl_nm FORMAT A40
+COL raw_bytes FORMAT A120
+SELECT SYBL_NM, DUMP(SYBL_NM,16) AS raw_bytes
+  FROM AIMS_DEV.T_TIPA_VMS_SYBL_01I WHERE ROWNUM <= 5;
+
+PROMPT
+PROMPT === 일반 한글 표본 ===
+SELECT CD_ID, CD_NM FROM AIMS_DEV.T_AAAA_CMMN01C WHERE ROWNUM <= 10;
+
+PROMPT
+PROMPT === LOB 건수 (바이트 총합은 컬럼명 확인 후 별도 실행) ===
+SELECT 'T_TIPA_VMS_SYBL_01I' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_TIPA_VMS_SYBL_01I;
+SELECT 'T_TIPA_LCS_SYBL_01I' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_TIPA_LCS_SYBL_01I;
+SELECT 'T_TIPB_VSL_PGRM_01I' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_TIPB_VSL_PGRM_01I;
+SELECT 'T_TIPE_LCS_LCTRL_01M' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_TIPE_LCS_LCTRL_01M;
+SELECT 'T_TIPE_VMST_DDRF_PHSE_OBJ_01L' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_TIPE_VMST_DDRF_PHSE_OBJ_01L;
+
+SPOOL OFF
+
+-- ---------------------------------------------------------------
+-- (3) 타겟 건수 스크립트 생성 (02 와 동일 로직, 출력 파일명만 다름)
+-- ---------------------------------------------------------------
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET LINESIZE 500
+
+SPOOL 05_gen_counts.sql
+
+SELECT txt FROM (
+    SELECT 1 AS s1, 0 AS s2, 'SET PAGESIZE 5000'                     AS txt FROM DUAL
+    UNION ALL SELECT 1, 1, 'SET LINESIZE 200'                               FROM DUAL
+    UNION ALL SELECT 1, 2, 'SET FEEDBACK OFF'                               FROM DUAL
+    UNION ALL SELECT 1, 3, 'SET TRIMSPOOL ON'                               FROM DUAL
+    UNION ALL SELECT 1, 4, 'COL tab FORMAT A45'                             FROM DUAL
+    UNION ALL SELECT 1, 5, 'SPOOL 05_target_counts.log'                     FROM DUAL
+    UNION ALL SELECT 1, 6, 'SELECT tab, cnt FROM ('                         FROM DUAL
+    UNION ALL
+    SELECT 2, ROWNUM,
+           'SELECT ''' || owner || '.' || table_name || ''' tab, COUNT(*) cnt FROM "'
+           || owner || '"."' || table_name || '" UNION ALL'
+      FROM ( SELECT owner, table_name FROM all_tables
+              WHERE owner IN ('AIMS_DEV','AIMSC_DEV')
+              ORDER BY owner, table_name )
+    UNION ALL SELECT 3, 0, 'SELECT ''~~END~~'' tab, -1 cnt FROM DUAL'       FROM DUAL
+    UNION ALL SELECT 3, 1, ') ORDER BY tab;'                                FROM DUAL
+    UNION ALL SELECT 3, 2, 'SPOOL OFF'                                      FROM DUAL
+) ORDER BY s1, s2;
+
+SPOOL OFF
+
+-- ---------------------------------------------------------------
+-- (4) 타겟 뷰 건수 스크립트 생성 (02 와 동일 로직)
+-- ---------------------------------------------------------------
+SPOOL 05_gen_view_counts.sql
+
+SELECT txt FROM (
+    SELECT 1 AS s1, 0 AS s2, 'SET PAGESIZE 0'                       AS txt FROM DUAL
+    UNION ALL SELECT 1, 1, 'SET HEADING OFF'                               FROM DUAL
+    UNION ALL SELECT 1, 2, 'SET FEEDBACK OFF'                              FROM DUAL
+    UNION ALL SELECT 1, 3, 'SET LINESIZE 200'                              FROM DUAL
+    UNION ALL SELECT 1, 4, 'SET TRIMSPOOL ON'                              FROM DUAL
+    UNION ALL SELECT 1, 5, 'WHENEVER SQLERROR CONTINUE'                    FROM DUAL
+    UNION ALL SELECT 1, 6, 'SPOOL 05_target_view_counts.log'               FROM DUAL
+    UNION ALL
+    SELECT 2, ROWNUM,
+           'SELECT ''' || owner || '.' || view_name || ''' || ''  '' || COUNT(*) FROM "'
+           || owner || '"."' || view_name || '";'
+      FROM ( SELECT owner, view_name FROM all_views
+              WHERE owner IN ('AIMS_DEV','AIMSC_DEV')
+              ORDER BY owner, view_name )
+    UNION ALL SELECT 3, 0, 'SPOOL OFF'                                     FROM DUAL
+) ORDER BY s1, s2;
+
+SPOOL OFF
+
+SET HEADING ON
+SET FEEDBACK ON
+SET PAGESIZE 200
+
+PROMPT
+PROMPT ================================================================
+PROMPT 다음:
+PROMPT   @05_gen_counts.sql       -> 05_target_counts.log
+PROMPT   @05_gen_view_counts.sql  -> 05_target_view_counts.log
+PROMPT 그 뒤 소스 로그와 함께 ./06_compare.sh 로 대조하세요.
+PROMPT   ./06_compare.sh 02_baseline_counts.log 05_target_counts.log 02_baseline_meta.log 05_target_meta.log
+PROMPT   ./06_compare.sh 02_baseline_view_counts.log 05_target_view_counts.log
+PROMPT ================================================================
