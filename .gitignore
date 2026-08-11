@@ -6,6 +6,9 @@ results/
 *_gen_*.sql
 08_expected_counts.log
 06_compare_report.txt
+09_target_counts_subset.log
+refresh_*.log
+refresh.cron.log
 dump_backup/
 work/
 
