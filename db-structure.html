@@ -1,0 +1,520 @@
+<title>AIMS DB 구조 — 3개 스키마와 시노님 계층</title>
+<style>
+:root{
+  --paper:#F1F4F7; --surface:#FFFFFF; --surface-2:#F7F9FB;
+  --ink:#151A21; --ink-2:#4A5663; --ink-3:#78848F;
+  --line:#D3DAE3; --line-2:#E7ECF2;
+  --accent:#2C6E8E; --accent-soft:#E3EEF4;
+  --data:#A2621B; --data-soft:#F6EDDF;
+  --warn:#9A4335; --warn-soft:#F8E8E5;
+  --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",
+        "Malgun Gothic",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,"Cascadia Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#0F131A; --surface:#161C24; --surface-2:#1B222B;
+    --ink:#E5EAF1; --ink-2:#9BA8B7; --ink-3:#77848F;
+    --line:#293240; --line-2:#212934;
+    --accent:#74B9D8; --accent-soft:#182935;
+    --data:#DCA45F; --data-soft:#2A2117;
+    --warn:#DC8C7F; --warn-soft:#2D1E1B;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F131A; --surface:#161C24; --surface-2:#1B222B;
+  --ink:#E5EAF1; --ink-2:#9BA8B7; --ink-3:#77848F;
+  --line:#293240; --line-2:#212934;
+  --accent:#74B9D8; --accent-soft:#182935;
+  --data:#DCA45F; --data-soft:#2A2117;
+  --warn:#DC8C7F; --warn-soft:#2D1E1B;
+}
+:root[data-theme="light"]{
+  --paper:#F1F4F7; --surface:#FFFFFF; --surface-2:#F7F9FB;
+  --ink:#151A21; --ink-2:#4A5663; --ink-3:#78848F;
+  --line:#D3DAE3; --line-2:#E7ECF2;
+  --accent:#2C6E8E; --accent-soft:#E3EEF4;
+  --data:#A2621B; --data-soft:#F6EDDF;
+  --warn:#9A4335; --warn-soft:#F8E8E5;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--sans); font-size:16px; line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:56rem; margin:0 auto; padding:3.5rem 1.5rem 6rem;
+  display:flex; flex-direction:column; gap:3.25rem}
+@media(max-width:640px){ .wrap{padding:2rem 1.1rem 4rem; gap:2.5rem} }
+
+/* ── 헤더 ── */
+header{display:flex; flex-direction:column; gap:1rem}
+.eyebrow{font-family:var(--mono); font-size:.7rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--accent); font-weight:600}
+h1{margin:0; font-size:clamp(1.7rem,4.5vw,2.4rem); line-height:1.25;
+  letter-spacing:-.02em; font-weight:700; text-wrap:balance}
+.lede{margin:0; max-width:60ch; color:var(--ink-2); font-size:1.05rem}
+.lede b{color:var(--ink); font-weight:600}
+
+.stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));
+  gap:1px; background:var(--line); border:1px solid var(--line); border-radius:3px;
+  overflow:hidden; margin-top:.5rem}
+.stat{background:var(--surface); padding:.85rem 1rem}
+.stat dt{font-family:var(--mono); font-size:.68rem; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--ink-3); margin:0 0 .3rem}
+.stat dd{margin:0; font-family:var(--mono); font-size:1.15rem; font-weight:600;
+  font-variant-numeric:tabular-nums; letter-spacing:-.01em}
+
+/* ── 섹션 ── */
+section{display:flex; flex-direction:column; gap:1.1rem}
+h2{margin:0; font-size:1.3rem; letter-spacing:-.015em; font-weight:700;
+  padding-bottom:.6rem; border-bottom:2px solid var(--ink); text-wrap:balance}
+h3{margin:1rem 0 0; font-size:1rem; font-weight:650; color:var(--ink)}
+p{margin:0; max-width:66ch}
+p+p{margin-top:.15rem}
+strong{font-weight:650}
+code{font-family:var(--mono); font-size:.88em; background:var(--surface-2);
+  border:1px solid var(--line-2); border-radius:3px; padding:.08em .34em;
+  white-space:nowrap}
+.q{font-family:var(--mono); font-size:.7rem; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:600}
+
+/* ── 스키마 다이어그램 ── */
+.diagram{background:var(--surface); border:1px solid var(--line);
+  border-radius:4px; padding:1.6rem 1.4rem; overflow-x:auto}
+.tier{display:grid; grid-template-columns:1fr 1fr; gap:1rem}
+@media(max-width:600px){ .tier{grid-template-columns:1fr} }
+.node{border:1.5px solid var(--line); border-radius:3px; background:var(--surface-2);
+  padding:.9rem 1rem; display:flex; flex-direction:column; gap:.5rem}
+.node.src{border-color:var(--data); background:var(--data-soft)}
+.node-head{display:flex; align-items:baseline; justify-content:space-between; gap:.6rem}
+.node-name{font-family:var(--mono); font-weight:700; font-size:.95rem; letter-spacing:-.01em}
+.node-size{font-family:var(--mono); font-size:.78rem; color:var(--ink-2);
+  font-variant-numeric:tabular-nums}
+.node.src .node-size{color:var(--data); font-weight:600}
+.node-role{font-size:.8rem; color:var(--ink-2); margin:0}
+.parts{display:flex; flex-wrap:wrap; gap:.3rem}
+.part{font-family:var(--mono); font-size:.72rem; padding:.16rem .45rem;
+  border:1px solid var(--line); border-radius:2px; background:var(--surface);
+  color:var(--ink-2); font-variant-numeric:tabular-nums}
+.part.hl{border-color:var(--accent); color:var(--accent); font-weight:600;
+  background:var(--accent-soft)}
+.part.zero{color:var(--ink-3)}
+.connector{display:block; width:100%; height:auto; margin:.1rem 0}
+.center{max-width:24rem; margin:0 auto}
+.dgm-cap{font-size:.8rem; color:var(--ink-3); margin:.9rem 0 0; text-align:center}
+
+/* ── 조회 경로 ── */
+.path{display:flex; flex-direction:column; gap:0; font-family:var(--mono);
+  font-size:.82rem}
+.step{border:1px solid var(--line); border-left:3px solid var(--accent);
+  background:var(--surface-2); padding:.6rem .85rem; display:flex;
+  flex-wrap:wrap; align-items:baseline; gap:.6rem}
+.step.final{border-left-color:var(--data); background:var(--data-soft)}
+.step-what{font-weight:650}
+.step-note{font-family:var(--sans); font-size:.78rem; color:var(--ink-2)}
+.arrow-v{align-self:flex-start; margin-left:1.1rem; color:var(--ink-3);
+  font-family:var(--mono); font-size:.8rem; line-height:1.4; padding:.2rem 0}
+
+/* ── 표 ── */
+.tbl-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:4px}
+table{border-collapse:collapse; width:100%; font-size:.87rem; background:var(--surface)}
+th,td{padding:.6rem .85rem; text-align:left; border-bottom:1px solid var(--line-2)}
+thead th{background:var(--surface-2); font-family:var(--mono); font-size:.72rem;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2); font-weight:600;
+  border-bottom:1px solid var(--line); white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+td.m,th.m{font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+td.num{text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums}
+.mark{color:var(--data); font-weight:650}
+
+/* ── 주의 블록 ── */
+.notes{display:flex; flex-direction:column; gap:.75rem}
+.note{border:1px solid var(--line); border-radius:4px; background:var(--surface);
+  padding:.9rem 1.05rem; display:flex; flex-direction:column; gap:.35rem}
+.note.crit{border-color:var(--warn); background:var(--warn-soft)}
+.note-t{font-weight:650; font-size:.95rem; display:flex; gap:.5rem; align-items:baseline}
+.note-n{font-family:var(--mono); font-size:.72rem; color:var(--ink-3); font-weight:600;
+  flex:none}
+.note.crit .note-n{color:var(--warn)}
+.note p{font-size:.9rem; color:var(--ink-2); max-width:none}
+.note code{background:var(--surface); font-size:.85em}
+.note.crit code{background:var(--surface)}
+
+hr{border:none; border-top:1px solid var(--line); margin:0}
+footer{font-size:.82rem; color:var(--ink-3); display:flex; flex-direction:column;
+  gap:.3rem}
+footer code{font-size:.85em}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Tibero 7.2 · MSWIN949 · TAIMS</div>
+  <h1>AIMS DB 구조 — 3개 스키마와 시노님 계층</h1>
+  <p class="lede">앱은 <b>AIMS_DEV</b> 하나만 보지만, 실제 데이터의 80%는
+  <b>AIMS_EX</b>에 있다. 그 사이를 <b>시노님 101개</b>가 잇는다. 이 구조를 모르면
+  테이블을 추가해도 앱에서 보이지 않고, 이관 범위를 잘못 잡는다.</p>
+
+  <dl class="stats">
+    <div class="stat"><dt>스키마</dt><dd>3</dd></div>
+    <div class="stat"><dt>실테이블</dt><dd>416</dd></div>
+    <div class="stat"><dt>전체 행</dt><dd>4,802,221</dd></div>
+    <div class="stat"><dt>뷰</dt><dd>111</dd></div>
+    <div class="stat"><dt>시노님</dt><dd>202</dd></div>
+  </dl>
+</header>
+
+<hr>
+
+<section>
+  <h2>전체 구조</h2>
+  <p>세 스키마는 대등하지 않다. <strong>업무 스키마 2개가 원천 스키마 1개를 참조하는
+  형태</strong>다.</p>
+
+  <div class="diagram">
+    <div class="tier">
+      <div class="node">
+        <div class="node-head">
+          <span class="node-name">AIMS_DEV</span>
+          <span class="node-size">127 MB</span>
+        </div>
+        <p class="node-role">업무 스키마 — 앱이 접속하는 곳</p>
+        <div class="parts">
+          <span class="part">테이블 158</span>
+          <span class="part">뷰 58</span>
+          <span class="part hl">시노님 101</span>
+          <span class="part">파티션 81</span>
+          <span class="part">패키지 1</span>
+        </div>
+      </div>
+      <div class="node">
+        <div class="node-head">
+          <span class="node-name">AIMSC_DEV</span>
+          <span class="node-size">104 MB</span>
+        </div>
+        <p class="node-role">동일 구조의 사본 — 데이터는 0행</p>
+        <div class="parts">
+          <span class="part">테이블 157</span>
+          <span class="part">뷰 53</span>
+          <span class="part hl">시노님 101</span>
+          <span class="part">파티션 81</span>
+          <span class="part zero">데이터 0행</span>
+        </div>
+      </div>
+    </div>
+
+    <svg class="connector" viewBox="0 0 600 70" role="img"
+         aria-label="AIMS_DEV 와 AIMSC_DEV 의 시노님이 모두 AIMS_EX 를 가리킨다">
+      <g fill="none" stroke="var(--accent)" stroke-width="1.5">
+        <path d="M150 4 L150 30 Q150 38 158 38 L292 38 Q300 38 300 46 L300 62"/>
+        <path d="M450 4 L450 30 Q450 38 442 38 L308 38 Q300 38 300 46 L300 62"/>
+      </g>
+      <path d="M300 68 L295 58 L305 58 Z" fill="var(--accent)"/>
+      <text x="300" y="26" text-anchor="middle" fill="var(--accent)"
+            font-family="ui-monospace,monospace" font-size="11" font-weight="600">
+        시노님 101 × 2 → 동명 테이블</text>
+    </svg>
+
+    <div class="node src center">
+      <div class="node-head">
+        <span class="node-name">AIMS_EX</span>
+        <span class="node-size">954 MB</span>
+      </div>
+      <p class="node-role">원천 스키마 — ITS 현장 수집 데이터</p>
+      <div class="parts">
+        <span class="part">테이블 101</span>
+        <span class="part">약 450만 행</span>
+        <span class="part">BLOB 195MB</span>
+        <span class="part zero">뷰 0 · 시노님 0</span>
+        <span class="part">PK 7</span>
+      </div>
+    </div>
+
+    <p class="dgm-cap">화살표는 시노님이 가리키는 방향. 데이터는 반대로 흐른다.</p>
+  </div>
+
+  <p><strong>이름 규칙이 소속을 말해준다.</strong> <code>T_AAAA_*</code>·<code>T_AAAB_*</code>는
+  업무 스키마의 자체 테이블, <code>T_TIP*</code>·<code>IAM_*</code>·<code>ITWM_*</code>는
+  <code>AIMS_EX</code>의 원천 테이블이다. 앱에서 <code>AIMS_DEV.T_TIPA_CCTV_01M</code>을
+  조회해도 실체는 <code>AIMS_EX</code>에 있다.</p>
+</section>
+
+<section>
+  <h2>실데이터는 어디에 있나</h2>
+  <p class="q">질문 1 — 실제 데이터 존재 위치</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>스키마</th><th class="m">용량</th><th class="m">행</th><th>성격</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="m mark">AIMS_EX</td>
+          <td class="num mark">954 MB</td>
+          <td class="num mark">약 450만</td>
+          <td>실질적으로 데이터의 전부. CCTV·VMS·터널·검지기 등 현장 수집 이력</td>
+        </tr>
+        <tr>
+          <td class="m">AIMS_DEV</td>
+          <td class="num">127 MB</td>
+          <td class="num">약 1만</td>
+          <td>설정·코드성 데이터 위주 (메뉴, 권한, 공통코드, 점검계획)</td>
+        </tr>
+        <tr>
+          <td class="m">AIMSC_DEV</td>
+          <td class="num">104 MB</td>
+          <td class="num">0</td>
+          <td>157개 테이블 전부 비어 있음. 구조만 존재</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><code>AIMS_EX</code> 상위 테이블: <code>T_TIPG_TBSP_STAT_01L</code> 879,615행 ·
+  <code>T_TIPE_EMBR_STAT_01N</code> 835,460행 · <code>T_TIPD_VDS_CWNO_HR_01S</code>
+  486,744행. 대부분 시계열 이력이다.</p>
+
+  <p><code>AIMSC_DEV</code>가 비어 있는데도 104MB인 것은 테이블·인덱스 세그먼트가
+  할당돼 있기 때문이다. 뷰를 조회하면 값이 나오는데, <strong>자기 데이터가 아니라
+  시노님을 통해 <code>AIMS_EX</code>를 보고 있어서</strong>다.</p>
+</section>
+
+<section>
+  <h2>조회는 어떤 경로로 가나</h2>
+  <p class="q">질문 2 — 데이터를 참조하는 위치</p>
+
+  <p>앱이 <code>AIMS_DEV.V_AAAA_CCTV_STAT01L</code> 하나를 조회할 때 실제로 거치는 층이다.</p>
+
+  <div class="path">
+    <div class="step">
+      <span class="step-what">AIMS_DEV.V_AAAA_CCTV_STAT01L</span>
+      <span class="step-note">상태 뷰 — 앱이 호출</span>
+    </div>
+    <div class="arrow-v">│<br>▼</div>
+    <div class="step">
+      <span class="step-what">AIMS_DEV.V_AAAA_CCTV01M</span>
+      <span class="step-note">장비 마스터 뷰 — 뷰가 뷰를 참조</span>
+    </div>
+    <div class="arrow-v">│<br>▼</div>
+    <div class="step">
+      <span class="step-what">AIMS_DEV.T_TIPA_CCTV_01M</span>
+      <span class="step-note">시노님 — 실체 없음, 가리키기만 함</span>
+    </div>
+    <div class="arrow-v">│<br>▼</div>
+    <div class="step final">
+      <span class="step-what">AIMS_EX.T_TIPA_CCTV_01M</span>
+      <span class="step-note">실테이블 15,243행 — 여기가 데이터</span>
+    </div>
+  </div>
+
+  <p>시노님은 <strong>이름만 빌려주는 포인터</strong>다. 저장 공간을 쓰지 않고 데이터도
+  갖지 않는다. 덕분에 앱은 스키마를 하나만 알면 되고, 원천 스키마가 바뀌어도 접속
+  설정을 고칠 필요가 없다.</p>
+
+  <p>대신 <strong>권한이 반드시 따라와야 한다.</strong> 시노님이 있어도
+  <code>AIMS_EX</code> 객체에 <code>SELECT</code> 권한이 없으면 조회가 실패한다.
+  이관 시 <code>tbimport GRANT=Y</code>로 소스의 객체 권한을 그대로 옮긴 이유다.</p>
+</section>
+
+<section>
+  <h2>뷰는 어떻게 짜여 있나</h2>
+  <p class="q">질문 3 — View 구성</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>스키마</th><th class="m">뷰</th><th>비고</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="m">AIMS_DEV</td><td class="num">58</td>
+            <td><code>V_AAAA_PRCTLR_*</code> 5개가 추가로 존재</td></tr>
+        <tr><td class="m">AIMSC_DEV</td><td class="num">53</td>
+            <td>AIMS_DEV 의 부분집합</td></tr>
+        <tr><td class="m">AIMS_EX</td><td class="num">0</td>
+            <td>원천 스키마에는 뷰가 없다 — 테이블과 인덱스뿐</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>2계층 구조</h3>
+  <p>뷰끼리의 참조가 <strong>87건</strong> 있다. 무작위가 아니라 두 층으로 나뉜다.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>층</th><th>이름 패턴</th><th>역할</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="m">1층</td><td class="m">V_..._01M</td>
+          <td>장비 마스터. 시노님(원천 테이블)을 감싸 업무 관점으로 정리
+              — <code>V_AAAA_CCTV01M</code>, <code>V_AAAA_VMS01M</code></td>
+        </tr>
+        <tr>
+          <td class="m">2층</td><td class="m">V_..._01L / _01S</td>
+          <td>상태·이력·집계. 1층 뷰를 참조
+              — <code>V_AAAA_CCTV_STAT01L</code>, <code>V_AAAA_VDS_CWNO_HR01S</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>통합 뷰가 팬인(fan-in) 지점</h3>
+  <p><code>V_AAAA_FILD_EQPM01M</code>은 장비 종류별 1층 뷰 <strong>12개</strong>를 하나로
+  묶는다 — CCTV, VMS, VDS, AVC, VSL, LCS, EMBR, WIM, IOT, UTLPH, RADR_SNSR, DSR_MCU.
+  "현장 장비 전체"를 한 번에 조회하는 창구다.</p>
+  <p>이 뷰가 깨지면 그 위의 <code>V_AAAA_BRDW_PROS01L</code>,
+  <code>V_AAAA_ISPC_PLAN01L</code>까지 연쇄로 무효가 된다. 이관 직후 무효 뷰가
+  109개였다가 재컴파일 한 번에 0이 된 것도 이 의존 사슬 때문이다.</p>
+</section>
+
+<section>
+  <h2>DDL이 없던 이유는 시노님인가</h2>
+  <p class="q">질문 4 — 세 가지가 섞여 있었다</p>
+
+  <p><strong>아니다.</strong> 처음 받은 DBeaver 덤프에서 관측된 세 가지 현상은 원인이
+  각각 다르다. 구분해야 다음에 같은 혼동이 없다.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>관측</th><th>실제 원인</th><th>시노님과 관계</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>DDL이 하나도 없음</strong><br>259개 파일 전부 INSERT만</td>
+          <td>DBeaver가 <strong>데이터만</strong> 익스포트하도록 설정됐다.
+              전 테이블 공통이며 시노님과 무관하다</td>
+          <td class="m">무관</td>
+        </tr>
+        <tr>
+          <td><strong>파일 259개 ≠ 테이블 158개</strong></td>
+          <td>DBeaver 트리가 <strong>시노님도 테이블처럼</strong> 보여준다.
+              158 + 101 = 259로 정확히 맞는다</td>
+          <td class="m mark">이것이 시노님</td>
+        </tr>
+        <tr>
+          <td><strong>0 byte 파일 128개</strong></td>
+          <td>해당 테이블에 <strong>행이 없어서</strong>다.
+              구조 문제가 아니라 데이터가 비어 있는 것</td>
+          <td class="m">무관</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>시노님이 문제였던 지점은 따로 있다. <strong>덤프 2벌이 똑같이 1.2GB였던 이유</strong>가
+  그것이다. <code>AIMS_DEV</code> 덤프와 <code>AIMSC_DEV</code> 덤프가 각자의 시노님을
+  통해 <strong>같은 <code>AIMS_EX</code> 데이터를 중복으로</strong> 담고 있었다.
+  <code>AIMSC_DEV</code>는 자기 데이터가 0행인데도 말이다.</p>
+</section>
+
+<section>
+  <h2>왜 이렇게 구성했나</h2>
+  <p class="q">질문 5-1 — 데이터베이스 구성 방법</p>
+
+  <p><strong>수집계와 업무계를 스키마로 분리</strong>한 구조다. 각 층이 맡는 일이 다르다.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>스키마</th><th>맡는 일</th><th>쓰기 주체</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="m">AIMS_EX</td>
+            <td>현장 장비·외부 시스템에서 들어온 원천 데이터 적재</td>
+            <td>수집 배치 / 연계 인터페이스</td></tr>
+        <tr><td class="m">AIMS_DEV</td>
+            <td>업무 로직 — 고장판단, 점검계획, 결재, 권한, 공통코드</td>
+            <td>AIMS 애플리케이션</td></tr>
+        <tr><td class="m">AIMSC_DEV</td>
+            <td>동일 구조의 사본 (검증·비교용으로 보이며 현재 데이터 없음)</td>
+            <td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>분리하면 수집 부하와 업무 트랜잭션이 서로 간섭하지 않고, 원천 데이터의 소유·권한을
+  따로 관리할 수 있다. 그러면서도 <strong>시노님 덕분에 앱은 스키마가 하나인 것처럼</strong>
+  쿼리를 쓴다. 뷰가 그 위에서 원천 테이블을 업무 용어로 번역한다.</p>
+
+  <p>구조상 특이한 점 둘. <strong>FK가 0건</strong>이고 <strong><code>AIMS_EX</code>의 PK가
+  101개 테이블 중 7개</strong>뿐이다. 대량 적재 성능을 위해 제약을 DB가 아니라 애플리케이션에
+  둔 설계로 보인다. 시퀀스도 0건이라 키 생성도 앱이 한다.</p>
+</section>
+
+<section>
+  <h2>테이블 추가·수정 시 유의점</h2>
+  <p class="q">질문 5-2 — 변경 시 점검 항목</p>
+
+  <div class="notes">
+    <div class="note crit">
+      <div class="note-t"><span class="note-n">01</span>
+        AIMS_EX에 테이블을 추가하면 시노님도 만들어야 한다</div>
+      <p>테이블만 만들면 앱에서 보이지 않는다. <code>AIMS_DEV</code>·<code>AIMSC_DEV</code>
+      양쪽에 <code>CREATE SYNONYM</code>과 <code>GRANT</code>를 함께 해야 한다.
+      기존 101개도 전부 이 짝을 이루고 있다.</p>
+    </div>
+
+    <div class="note crit">
+      <div class="note-t"><span class="note-n">02</span>
+        권한 없이는 시노님이 동작하지 않는다</div>
+      <p>시노님은 이름만 가리킬 뿐 권한을 주지 않는다. <code>AIMS_EX</code> 객체에
+      <code>SELECT</code>(필요 시 <code>INSERT/UPDATE/DELETE</code>)를 별도로 부여해야
+      한다. 조회 시 "테이블이 없다"가 아니라 권한 오류로 나타나 원인을 놓치기 쉽다.</p>
+    </div>
+
+    <div class="note">
+      <div class="note-t"><span class="note-n">03</span>
+        원천 테이블 컬럼을 바꾸면 위층 뷰가 무효화된다</div>
+      <p>시노님은 포인터라 자동으로 따라오지만, 그 위 1층·2층 뷰는 <code>INVALID</code>가
+      된다. 뷰→뷰 참조가 87건이라 연쇄로 번진다. 변경 후
+      <code>07_recompile_invalid.sql</code>로 재컴파일하고 무효 객체 0을 확인할 것.</p>
+    </div>
+
+    <div class="note crit">
+      <div class="note-t"><span class="note-n">04</span>
+        문자셋이 MSWIN949 — 한글 1자가 2바이트다</div>
+      <p><code>VARCHAR2(30)</code>은 <strong>한글 15자</strong>다. UTF-8 기준(10자)으로
+      설계하면 안 된다. 반대로 이 DB를 UTF-8로 옮기면 길이가 1.5배가 되어
+      <strong>6,131개 컬럼 중 2,469개가 정의 길이를 초과</strong>한다. 실측값이다.</p>
+    </div>
+
+    <div class="note">
+      <div class="note-t"><span class="note-n">05</span>
+        PK가 없으니 중복 방지는 앱 책임이다</div>
+      <p><code>AIMS_EX</code>는 101개 중 7개만 PK가 있고 FK는 전 스키마 0건이다.
+      DB가 막아주지 않으므로 중복·고아 데이터는 애플리케이션이 검증해야 한다.
+      이관 검증이 건수 대조에 의존하는 것도 이 때문이다.</p>
+    </div>
+
+    <div class="note">
+      <div class="note-t"><span class="note-n">06</span>
+        파티션 테이블 162개는 패키지가 관리한다</div>
+      <p>RANGE 파티션 578개가 <code>AIMS_DEV</code>·<code>AIMSC_DEV</code>에 있고
+      <code>P_AAAA_PRTT_TBL_MGMT</code> 패키지가 이를 다룬다. 파티션 테이블을 추가하거나
+      기간을 늘릴 때는 이 패키지의 대상 목록도 함께 확인해야 한다.</p>
+    </div>
+
+    <div class="note">
+      <div class="note-t"><span class="note-n">07</span>
+        UT DB를 갱신하면 로컬 변경은 사라진다</div>
+      <p><code>09_refresh.sh</code>는 차이를 반영하는 동기화가 아니라
+      <strong>전량 교체</strong>다. 스키마를 통째로 버리고 소스 시점으로 다시 만든다.
+      UT 중 입력한 테스트 데이터와 타겟에만 추가한 객체는 남지 않는다.</p>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<footer>
+  <div>측정 시점 2026-08-10 · 소스 <code>121.137.106.217:58629/TAIMS</code> ·
+       UT <code>192.168.0.101:18629/TAIMS</code></div>
+  <div>상세 절차와 재현 방법은 저장소의 <code>migration/README.md</code> 참고</div>
+</footer>
+
+</div>

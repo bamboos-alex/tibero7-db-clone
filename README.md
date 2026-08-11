@@ -57,6 +57,7 @@
 | `04b_target_create.sql` | Phase 2 | 테이블스페이스 4개 + 계정 3개 생성 **(변경 발생)** |
 | `08_expected_from_exportlog.sh` | Phase 4 | 추출 로그에서 기대 건수 산출 — **검증의 기준값** |
 | `09_refresh.sh` | 운영 | 전량 재적재 — 초기화→추출→적재→재컴파일→검증 **(변경 발생)** |
+| `db-structure.html` | 참고 | DB 구조 설명 (그림 버전). 브라우저로 열면 된다 |
 | `01b`/`01c` | Phase 0 | 이관 범위·시노님 대상 스키마 확정 (읽기 전용) |
 
 ## 파일 동기화
@@ -154,7 +155,8 @@ DBeaver 덤프의 259개 파일은 **테이블 158개 + 시노님 101개**였다
 
 ## DB 구조
 
-> 그림 버전: https://claude.ai/code/artifact/7044ce1d-d7aa-4d2a-ba3c-87dae6fbc548
+> 그림 버전: [`db-structure.html`](db-structure.html) — 브라우저로 열면 된다.
+> 게시본: https://claude.ai/code/artifact/7044ce1d-d7aa-4d2a-ba3c-87dae6fbc548
 
 세 스키마는 대등하지 않다. **업무 스키마 2개가 원천 스키마 1개를 참조하는 형태**다.
 이 구조를 모르면 테이블을 추가해도 앱에서 보이지 않고, 이관 범위를 잘못 잡는다.
