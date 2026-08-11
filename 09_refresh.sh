@@ -95,15 +95,40 @@ hr()   { printf '\n========== %s ==========\n' "$1"; }
 info() { printf '  %s\n' "$*"; }
 die()  { printf '\n[실패] %s\n' "$*" >&2; exit 1; }
 
+# ---- 비밀번호 마스킹 ----
+# 이 스크립트의 출력은 refresh_*.log 로 그대로 남는다. 로그를 공유할 일이 있으므로
+# 접속 비밀번호와 스키마 계정 비밀번호를 화면·로그에서 지운다.
+# 계정명(AIMS_DEV)과 비밀번호(aims_dev)는 대소문자가 달라 치환이 겹치지 않는다.
+# 다만 접속 계정명이 비밀번호와 같은 문자열이면(SRC_USER=SRC_PASS=aims_dev) 계정명도
+# 함께 가려진다 — 로그 판독에는 지장이 없다.
+_pw_list() {
+  printf '%s\n' "${SRC_PASS:-}" "${TGT_PASS:-}" \
+    "$(schema_pw AIMS_EX)" "$(schema_pw AIMS_DEV)" "$(schema_pw AIMSC_DEV)" \
+    | awk 'NF' | sort -u
+}
+mask() {        # 문자열 인자 마스킹
+  local s="$1" p
+  while IFS= read -r p; do [ -n "$p" ] && s="${s//$p/********}"; done < <(_pw_list)
+  printf '%s' "$s"
+}
+mask_stream() { # 표준입력 마스킹
+  local expr="" p
+  while IFS= read -r p; do [ -n "$p" ] && expr="$expr;s|$p|********|g"; done < <(_pw_list)
+  if [ -n "$expr" ]; then sed "${expr#;}"; else cat; fi
+}
+
 runc() {  # 컨테이너에서 실행
-  if [ "$DRYRUN" = "1" ]; then echo "  \$ $1"; return 0; fi
-  docker exec "$CONTAINER" bash -lc "$1"
+  if [ "$DRYRUN" = "1" ]; then echo "  \$ $(mask "$1")"; return 0; fi
+  docker exec "$CONTAINER" bash -lc "$1" | mask_stream
 }
 runsql() {  # 컨테이너의 tbsql 에 stdin 으로 SQL 투입
   if [ "$DRYRUN" = "1" ]; then
-    echo "  \$ tbsql sys/**** <<'SQL'"; sed 's/^/      /' ; echo "      SQL"; return 0
+    echo "  \$ tbsql ${TGT_USER}/******** <<'SQL'"
+    mask_stream | sed 's/^/      /'
+    echo "      SQL"
+    return 0
   fi
-  docker exec -i "$CONTAINER" bash -lc "tbsql -s $TGT_USER/$TGT_PASS@TAIMS"
+  docker exec -i "$CONTAINER" bash -lc "tbsql -s $TGT_USER/$TGT_PASS@TAIMS" | mask_stream
 }
 
 # ---------------------------------------------------------

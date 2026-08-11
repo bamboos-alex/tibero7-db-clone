@@ -416,10 +416,18 @@ T_TIPG_DB_LOCK_01L     242,360행
 부분 스키마로 돌릴 때 `05_gen_counts.sql` 은 3개 스키마가 고정돼 있어 항상 416개를 센다.
 `09` 가 대상 스키마만 걸러 `09_target_counts_subset.log` 로 대조하는 이유다.
 
-### 알려진 사항
+### 로그 마스킹
 
-`refresh_*.log` 의 뷰 재컴파일 단계에 `sys` 비밀번호가 평문으로 남는다. UT 컨테이너라
-당장 문제는 아니지만 로그를 외부에 공유할 때는 유의할 것.
+`09` 의 출력은 `refresh_*.log` 로 그대로 남으므로, 접속 비밀번호와 스키마 계정 비밀번호를
+화면·로그에서 지운다. 명령 문자열(`mask`)과 표준출력 스트림(`mask_stream`) 양쪽에 적용된다.
+
+```
+cd /tmp/tbmig && tbsql sys/******** @07_recompile_invalid.sql
+CREATE USER AIMS_DEV IDENTIFIED BY "********" DEFAULT TABLESPACE TS_AIMS_DATA;
+```
+
+계정명(`AIMS_DEV`)과 비밀번호(`aims_dev`)는 대소문자가 달라 치환이 겹치지 않는다. 다만
+접속 계정명이 비밀번호와 같은 문자열이면 계정명도 함께 가려진다 — 판독에는 지장이 없다.
 
 ## 실행 중 걸린 것들 (재현 시 참고)
 
