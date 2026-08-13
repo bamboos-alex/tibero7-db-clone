@@ -48,7 +48,7 @@
 set -uo pipefail
 
 # ================= 대상 =================
-CONTAINER="${CONTAINER:-tibero7_ut}"
+CONTAINER="${CONTAINER:-tibero7_ut_tablename}"
 # 순서 중요: 시노님이 AIMS_EX 를 가리키므로 먼저 만들어야 한다
 SCHEMAS="${SCHEMAS:-AIMS_EX AIMS_DEV AIMSC_DEV}"
 WORKDIR="${WORKDIR:-/tmp/tbmig}"

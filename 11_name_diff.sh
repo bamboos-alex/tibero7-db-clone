@@ -15,7 +15,7 @@
 
 set -uo pipefail
 
-OLD_CONTAINER="${OLD_CONTAINER:-tibero7_ut}"   # 변경 전 스냅샷을 가진 UT
+OLD_CONTAINER="${OLD_CONTAINER:-tibero7_ut}"   # 변경 전 스냅샷을 가진 1차 UT (기본값 유지)
 WORKDIR="${WORKDIR:-/tmp/tbmig}"
 SRC_LIST="${SRC_LIST:-../work/10_source_tables.log}"
 OUT="11_name_diff.txt"

@@ -25,9 +25,9 @@ SRC_USER="${SRC_USER:-}"
 SRC_PASS="${SRC_PASS:-}"
 SRC_DSN="${SRC_DSN:-SRC}"       # tbsql 전용. tbsql 은 host:port:sid 형식을 받지 않는다(확인됨)
 
-# ================= 타겟 (docker tibero7_ut) =================
+# ================= 타겟 (docker tibero7_ut_tablename, 호스트 28629) =================
 # 기존 tibero7 컨테이너의 AIMS_DEV 는 개발용이라 보존해야 하므로, 별도 인스턴스를 새로 만들었다.
-# 이 스크립트는 tibero7_ut 컨테이너 "안에서" 실행된다:
+# 이 스크립트는 tibero7_ut_tablename 컨테이너 "안에서" 실행된다:
 #   - 타겟은 자기 자신이라 localhost:8629
 #   - 소스는 외부 IP 라 그대로 닿는다
 # (tibero7 컨테이너에서 실행하면 localhost 가 자기 자신을 가리켜 타겟에 닿지 않는다)
@@ -41,7 +41,7 @@ TGT_DSN="${TGT_DSN:-TAIMS}"     # gen_tip.sh 가 TB_SID 로 만든 기본 DSN
 TBDSN="${TBDSN:-/opt/tibero7/client/config/tbdsn.tbr}"
 
 # ================= 공통 =================
-CONTAINER="${CONTAINER:-tibero7_ut}"
+CONTAINER="${CONTAINER:-tibero7_ut_tablename}"
 # 순서 중요: AIMS_DEV/AIMSC_DEV 의 시노님 101개가 AIMS_EX 를 가리킨다.
 # 대상 테이블이 먼저 있어야 시노님이 유효해지므로 AIMS_EX 를 앞에 둔다.
 SCHEMAS="${SCHEMAS:-AIMS_EX AIMS_DEV AIMSC_DEV}"

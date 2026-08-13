@@ -3,8 +3,11 @@
 #
 # 경로 구조
 #   맥      : ./                       (스크립트 원본, 결과는 ./results/ 로 받는다)
-#   서버    : ~/alex/tibero7_ut/migration (실행 위치)
-#   컨테이너: /tmp/tbmig               (tbsql 이 실행되는 곳 = tibero7_ut)
+#   서버    : ~/alex/tibero7_ut_tablename/migration (실행 위치)
+#   컨테이너: /tmp/tbmig               (tbsql 이 실행되는 곳 = tibero7_ut_tablename)
+#
+# 기본값은 2차 환경(테이블명 규약 변경분)이다. 1차(변경 전 스냅샷)를 다룰 때는:
+#   RPATH=alex/tibero7_ut/migration CONTAINER=tibero7_ut ./sync.sh ...
 #
 # 사용법
 #   ./sync.sh up      맥 -> 서버        스크립트 전송
@@ -24,8 +27,8 @@
 set -uo pipefail
 
 REMOTE="${REMOTE:-bamboos@192.168.0.101}"        # 비우면 로컬(서버)에서 실행하는 것으로 간주
-RPATH="${RPATH:-alex/tibero7_ut/migration}"  # 서버 홈 기준 상대경로
-CONTAINER="${CONTAINER:-tibero7_ut}"
+RPATH="${RPATH:-alex/tibero7_ut_tablename/migration}"  # 서버 홈 기준 상대경로
+CONTAINER="${CONTAINER:-tibero7_ut_tablename}"
 CPATH="${CPATH:-/tmp/tbmig}"                 # 컨테이너 작업 경로
 LOCAL="${LOCAL:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 RESULTS="${RESULTS:-$LOCAL/results}"

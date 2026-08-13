@@ -18,7 +18,7 @@
 
 set -uo pipefail
 
-CONTAINER="${CONTAINER:-tibero7_ut}"
+CONTAINER="${CONTAINER:-tibero7_ut_tablename}"
 WORKDIR="${WORKDIR:-/tmp/tbmig}"
 SCHEMAS="${SCHEMAS:-AIMS_EX AIMS_DEV AIMSC_DEV}"
 OUT="${OUT:-08_expected_counts.log}"

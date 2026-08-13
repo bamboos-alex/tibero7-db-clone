@@ -26,6 +26,39 @@
 스키마 rename 은 Oracle 호환 DB에서 불가능하고, 다른 스키마명으로 적재하면 뷰·시노님 정의문이 깨진다.
 그래서 별도 인스턴스(`tibero7_ut`)를 새로 만들었다 — `docker-compose.yml` 참고.
 
+## 2차 UT — 테이블명 규약 변경분 (진행 중)
+
+소스의 테이블명이 규약에 따라 변경돼 별도 인스턴스로 다시 복제한다.
+**스크립트 기본값은 이제 2차 환경을 가리킨다.**
+
+| | 1차 (변경 전) | 2차 (변경 후) |
+|---|---|---|
+| 컨테이너 | `tibero7_ut` | **`tibero7_ut_tablename`** |
+| 호스트 포트 | 18629 | **28629** |
+| 서버 폴더 | `~/alex/tibero7_ut/` | **`~/alex/tibero7_ut_tablename/`** |
+| DB명 / 캐릭터셋 | TAIMS / MSWIN949 | 동일 |
+| 상태 | 완료 — **비교 기준으로 유지** | 진행 중 |
+
+1차를 다룰 때는 환경변수로 되돌린다.
+
+```bash
+RPATH=alex/tibero7_ut/migration CONTAINER=tibero7_ut ./sync.sh up
+CONTAINER=tibero7_ut ./03_export_import.sh check
+```
+
+`11_name_diff.sh` 의 `OLD_CONTAINER` 만 `tibero7_ut` 로 남겨뒀다 — 변경 전 스냅샷이
+비교 기준이기 때문이다.
+
+### 순서
+
+1. **소스 실측** — `10_source_inventory.sql`. 스키마명·테이블명을 하나도 가정하지 않고 뽑는다
+2. **변경 대조** — `11_name_diff.sh`. 유지/신규/삭제를 집계하고, 스크립트에 박힌 6개
+   테이블명이 살아있는지 점검한다
+3. **인스턴스 기동** — `docker-compose.ut_tablename.yml` 을 `~/alex/tibero7_ut_tablename/docker-compose.yml`
+   로 복사 후 `docker compose up -d`. 기동 후 `Export character set: MSWIN949` 확인
+4. **스크립트 조정** — 2의 결과에 맞춰 `02`/`03`/`05`/`09` 의 테이블명, `04b`/`09` 의 계정
+5. **이관** — `dsn` → `validate` → `check` → `pilot` → `export` → `import` → `07` → `05` → `06`
+
 ## 왜 기존 덤프를 쓰지 않는가
 
 `/Users/alex/aims_ut_db_20260810/{AIMS_DEV,AIMSC_DEV}` 의 DBeaver 덤프(2.4GB)는 이관 소스로 쓸 수 없다.
