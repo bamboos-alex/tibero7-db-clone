@@ -72,6 +72,11 @@ GRANT CONNECT, RESOURCE TO AIMS_EX, AIMS_DEV, AIMSC_DEV;
 GRANT CREATE VIEW, CREATE SEQUENCE, CREATE SYNONYM, CREATE PROCEDURE TO AIMS_EX, AIMS_DEV, AIMSC_DEV;
 GRANT UNLIMITED TABLESPACE TO AIMS_EX, AIMS_DEV, AIMSC_DEV;
 
+-- ** DBA ** 소스 실측: 세 계정 모두 DBA 를 갖고 있다(dba_role_privs).
+-- 이게 없으면 앱·DBeaver 에서 다른 스키마가 보이지 않아 "소스에선 되는데 UT에선 안 되는"
+-- 현상이 생긴다. EXP_FULL_DATABASE / SELECT_CATALOG_ROLE 등은 DBA 에 딸려 온다.
+GRANT DBA TO AIMS_EX, AIMS_DEV, AIMSC_DEV;
+
 -- 시노님 101개가 AIMS_DEV/AIMSC_DEV -> AIMS_EX 를 가리킨다.
 -- tbimport 를 GRANT=Y 로 돌리면 소스의 객체 권한이 그대로 넘어온다.
 -- 그래도 뷰가 안 열리면 아래를 임시로 부여한다 (UT 환경이라 범위를 넓게 잡아도 무방).
@@ -90,6 +95,12 @@ COL username FORMAT A20
 COL default_tablespace FORMAT A25
 SELECT username, account_status, default_tablespace
   FROM dba_users WHERE username IN ('AIMS_EX','AIMS_DEV','AIMSC_DEV') ORDER BY 1;
+
+PROMPT -- 롤 (소스와 동일해야 한다: 각 계정에 CONNECT / RESOURCE / DBA)
+COL grantee FORMAT A15
+COL granted_role FORMAT A25
+SELECT grantee, granted_role FROM dba_role_privs
+ WHERE grantee IN ('AIMS_EX','AIMS_DEV','AIMSC_DEV') ORDER BY 1,2;
 
 PROMPT
 PROMPT ================================================================

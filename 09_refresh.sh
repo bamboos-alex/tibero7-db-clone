@@ -12,6 +12,7 @@
 #   - UT 중 타겟에 입력·수정한 테스트 데이터
 #   - 타겟에만 추가한 객체 (인덱스, 임시 테이블, 뷰 등)
 #   - 타겟에서 바꾼 계정 비밀번호 (schema_pw() 값으로 재설정된다)
+#   - 계정에 추가로 준 롤·권한 (CONNECT/RESOURCE/DBA 등 고정 집합으로 재설정된다)
 #
 # 반대로 얻는 것:
 #   - 소스의 DDL 변경(컬럼·테이블 추가/삭제)이 자동으로 따라온다
@@ -191,6 +192,7 @@ CREATE USER $s IDENTIFIED BY "$pw" DEFAULT TABLESPACE TS_AIMS_DATA TEMPORARY TAB
 GRANT CONNECT, RESOURCE TO $s;
 GRANT CREATE VIEW, CREATE SEQUENCE, CREATE SYNONYM, CREATE PROCEDURE TO $s;
 GRANT UNLIMITED TABLESPACE TO $s;
+GRANT DBA TO $s;
 EXIT;
 SQL
   done

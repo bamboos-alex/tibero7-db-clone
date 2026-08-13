@@ -186,6 +186,32 @@ DBeaver 덤프의 259개 파일은 **테이블 158개 + 시노님 101개**였다
 
 `AIMS_EX.T_TIPA_VMS_SYBL_01I.SYBL_NM` 의 바이트가 `a8,f6,**3f**,a1,c6,**3f**,...` 다. CP949 대역 바이트에 `3f`(`?`)가 섞여 있다 — 소스 DB에 이미 일부 문자가 `?` 로 치환된 채 저장돼 있다. **DBeaver 추출 탓이 아니다.** 타겟도 MSWIN949 이므로 tbExport/tbImport 는 이 바이트를 변환 없이 그대로 옮긴다. 이관으로 인한 추가 손실은 없고, 원본 복구는 이 작업 범위 밖이다.
 
+### 계정 롤도 소스와 맞춰야 한다
+
+소스는 `AIMS_EX` / `AIMS_DEV` / `AIMSC_DEV` **세 계정 모두 `DBA`** 를 갖고 있다
+(`dba_role_privs` 실측). `04b` 가 처음에 `CONNECT` / `RESOURCE` 만 줬더니, 타겟에서
+`aims_dev` 로 접속했을 때 **`AIMSC_DEV` 스키마가 보이지 않았다.** 남의 스키마라
+목록에 뜨지 않는 것이다.
+
+앱 동작에는 지장이 없지만(자기 스키마와 시노님만 쓰므로) UT 는 운영과 같게 동작해야
+한다. 권한이 다르면 "소스에선 되는데 UT에선 안 되는" 현상을 디버깅하게 된다.
+
+`04b` 와 `09` 에 `GRANT DBA` 를 넣었다. `EXP_FULL_DATABASE` / `SELECT_CATALOG_ROLE` /
+`SCHEDULER_ADMIN` 은 `DBA` 에 딸려 오므로 따로 줄 필요가 없다.
+
+기존에 만든 타겟에는 수동으로 부여한다.
+
+```bash
+docker exec -i tibero7_ut_tablename bash -lc 'tbsql -s sys/tibero123' <<'EOF'
+GRANT DBA TO AIMS_EX;
+GRANT DBA TO AIMS_DEV;
+GRANT DBA TO AIMSC_DEV;
+EXIT;
+EOF
+```
+
+1차 UT(18629)도 같은 상태다. 필요하면 `CONTAINER=tibero7_ut` 로 동일하게 부여한다.
+
 ## DB 구조
 
 > 그림 버전: [`db-structure.html`](db-structure.html) — 브라우저로 열면 된다.
