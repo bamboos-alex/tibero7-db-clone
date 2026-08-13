@@ -98,8 +98,8 @@ TGT_N=$(wc -l < /tmp/.cmp_tgt.$$ | tr -d ' ')
   □ 05_target_health.log 의 "뷰 조회 실패" 가 0건인가
   □ 뷰 건수도 대조했는가
       ./06_compare.sh 02_baseline_view_counts.log 05_target_view_counts.log
-  □ T_TIPA_VMS_SYBL_01I 의 DUMP(SYBL_NM,16) 이 소스와 바이트 단위로 동일한가
-  □ LOB 5개 테이블의 SUM(DBMS_LOB.GETLENGTH(...)) 가 소스와 일치하는가
+  □ 한글 표본의 DUMP(...,16) 이 소스와 바이트 단위로 동일한가 (05_verify.sql 의 KOR_TAB)
+  □ LOB 보유 테이블의 행수·바이트가 소스와 일치하는가 (05_target_health.log 하단)
   □ 애플리케이션 화면에서 한글이 정상 표시되는가
 EOF
 } | tee "$REPORT"

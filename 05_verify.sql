@@ -14,6 +14,12 @@ SET PAGESIZE 200
 SET TRIMSPOOL ON
 SET SERVEROUTPUT ON
 
+-- 한글 검증 표본. 소스 테이블명이 바뀌면 이 두 줄만 고치면 된다.
+-- (2026-08-13 규약 변경: T_AAAA_/T_AAAB_/T_TIP?_ -> T_ITSE_ 로 통합)
+DEFINE KOR_TAB  = "AIMS_EX.T_ITSE_VMS_SYBL_01I"
+DEFINE KOR_COL  = "SYBL_NM"
+DEFINE CODE_TAB = "AIMS_DEV.T_ITSE_CMMN01C"
+
 -- ---------------------------------------------------------------
 -- (1) 메타 개수 — 02 와 동일한 쿼리 (그대로 diff 하기 위해 순서·형식 유지)
 -- ---------------------------------------------------------------
@@ -126,42 +132,53 @@ SELECT owner, index_name, table_name, status FROM all_indexes
 
 PROMPT
 PROMPT === 한글 무결성 확인  ** 소스의 01_source_check.sql [7] 결과와 바이트 단위로 일치해야 함 ** ===
-COL sybl_nm FORMAT A40
+COL sample FORMAT A40
 COL raw_bytes FORMAT A120
-SELECT SYBL_NM, DUMP(SYBL_NM,16) AS raw_bytes
-  FROM AIMS_EX.T_TIPA_VMS_SYBL_01I WHERE ROWNUM <= 5;
+SELECT &KOR_COL AS sample, DUMP(&KOR_COL,16) AS raw_bytes
+  FROM &KOR_TAB WHERE ROWNUM <= 5;
 
 PROMPT
 PROMPT === 일반 한글 표본 ===
-SELECT CD_ID, CD_NM FROM AIMS_DEV.T_AAAA_CMMN01C WHERE ROWNUM <= 10;
+SELECT CD_ID, CD_NM FROM &CODE_TAB WHERE ROWNUM <= 10;
 
 PROMPT
-PROMPT === LOB 총량 (AIMS_EX 의 BLOB 5개 테이블) ===
-PROMPT -- 컬럼명은 01c_synonym_scope.sql [3] 결과로 확정됐다.
-PROMPT -- NULL LOB 가 섞이면 SUM 이 NULL 이 되므로 NVL 로 감싼다.
-SELECT 'T_TIPA_VMS_SYBL_01I' AS tab, COUNT(*) AS rows_cnt,
-       SUM(NVL(DBMS_LOB.GETLENGTH(SYBL_IMG_FILE_CTNT),0)
-         + NVL(DBMS_LOB.GETLENGTH(SYBL_RED_FILE_CTNT),0)
-         + NVL(DBMS_LOB.GETLENGTH(SYBL_GRN_FILE_CTNT),0)) AS lob_bytes
-  FROM AIMS_EX.T_TIPA_VMS_SYBL_01I;
+PROMPT === LOB 총량 (BLOB/CLOB 컬럼을 가진 테이블 전수) ===
+PROMPT -- 테이블명을 박아두지 않는다. 딕셔너리에서 LOB 컬럼을 찾아 동적으로 집계한다.
+PROMPT -- (소스의 테이블명 규약이 바뀌어도 이 블록은 그대로 동작한다)
+DECLARE
+  v_cols  VARCHAR2(4000);
+  v_rows  NUMBER;
+  v_bytes NUMBER;
+  v_n     PLS_INTEGER := 0;
+BEGIN
+  FOR t IN ( SELECT owner, table_name FROM all_tab_columns
+              WHERE owner IN ('AIMS_DEV','AIMSC_DEV','AIMS_EX')
+                AND data_type IN ('BLOB','CLOB','NCLOB')
+              GROUP BY owner, table_name
+              ORDER BY owner, table_name ) LOOP
+    v_cols := NULL;
+    FOR c IN ( SELECT column_name FROM all_tab_columns
+                WHERE owner = t.owner AND table_name = t.table_name
+                  AND data_type IN ('BLOB','CLOB','NCLOB')
+                ORDER BY column_id ) LOOP
+      v_cols := v_cols || CASE WHEN v_cols IS NULL THEN '' ELSE ' + ' END
+             || 'NVL(DBMS_LOB.GETLENGTH("' || c.column_name || '"),0)';
+    END LOOP;
 
-SELECT 'T_TIPA_LCS_SYBL_01I' AS tab, COUNT(*) AS rows_cnt,
-       SUM(NVL(DBMS_LOB.GETLENGTH(SYBL_IMG_FILE_CTNT),0)
-         + NVL(DBMS_LOB.GETLENGTH(SYBL_RED_FILE_CTNT),0)
-         + NVL(DBMS_LOB.GETLENGTH(SYBL_GRN_FILE_CTNT),0)) AS lob_bytes
-  FROM AIMS_EX.T_TIPA_LCS_SYBL_01I;
-
-SELECT 'T_TIPB_VSL_PGRM_01I' AS tab, COUNT(*) AS rows_cnt,
-       SUM(NVL(DBMS_LOB.GETLENGTH(PGRM_IMG_CTNT),0)) AS lob_bytes
-  FROM AIMS_EX.T_TIPB_VSL_PGRM_01I;
-
-SELECT 'T_TIPE_LCS_LCTRL_01M' AS tab, COUNT(*) AS rows_cnt,
-       SUM(NVL(DBMS_LOB.GETLENGTH(DRF_IMG_CTNT),0)) AS lob_bytes
-  FROM AIMS_EX.T_TIPE_LCS_LCTRL_01M;
-
-SELECT 'T_TIPE_VMST_DDRF_PHSE_OBJ_01L' AS tab, COUNT(*) AS rows_cnt,
-       SUM(NVL(DBMS_LOB.GETLENGTH(DRF_IMG_CTNT),0)) AS lob_bytes
-  FROM AIMS_EX.T_TIPE_VMST_DDRF_PHSE_OBJ_01L;
+    BEGIN
+      EXECUTE IMMEDIATE 'SELECT COUNT(*), NVL(SUM(' || v_cols || '),0) FROM "'
+                        || t.owner || '"."' || t.table_name || '"'
+        INTO v_rows, v_bytes;
+      v_n := v_n + 1;
+      DBMS_OUTPUT.PUT_LINE(RPAD(t.owner || '.' || t.table_name, 46)
+        || LPAD(TO_CHAR(v_rows), 12) || LPAD(TO_CHAR(v_bytes), 16));
+    EXCEPTION WHEN OTHERS THEN
+      DBMS_OUTPUT.PUT_LINE(RPAD(t.owner || '.' || t.table_name, 46) || '  조회 실패: ' || SQLERRM);
+    END;
+  END LOOP;
+  DBMS_OUTPUT.PUT_LINE('-- LOB 보유 테이블 ' || v_n || '개 (좌: 행수, 우: LOB 바이트)');
+END;
+/
 
 SPOOL OFF
 

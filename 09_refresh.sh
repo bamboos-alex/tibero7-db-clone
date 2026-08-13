@@ -72,13 +72,14 @@ schema_pw() {
 
 # ---- 제외 테이블 ----
 # 비워두면 전량. UT 에서 모니터링 이력이 불필요하면 아래를 켜면 추출이 크게 짧아진다.
-#   T_TIPA_VMS_SYBL_01I     BLOB 195MB — 추출 13분의 대부분을 차지
-#   T_TIPG_TBSP_STAT_01L    879,615행
-#   T_TIPE_EMBR_STAT_01N    835,460행
-#   T_TIPD_VDS_CWNO_HR_01S  486,744행
-#   T_TIPG_DB_LOCK_01L      242,360행
+#   T_ITSE_VMS_SYBL_01I     BLOB 195MB — 추출 13분의 대부분을 차지
+#   T_ITSE_TBSP_STAT_01L    879,615행
+#   T_ITSE_EMBR_STAT_01N    835,460행
+#   T_ITSE_VDS_CWNO_HR_01S  486,744행
+#   T_ITSE_DB_LOCK_01L      242,360행
+# (2026-08-13 규약 변경 반영: T_TIP?_ -> T_ITSE_. 건수는 변경 전 실측값)
 # ** EXCLUDE 파라미터 문법은 이 버전에서 미검증이다. 켜기 전에 소량으로 확인할 것:
-#      docker exec tibero7_ut bash -lc 'tbexport -h' | grep -A3 EXCLUDE
+#      docker exec tibero7_ut_tablename bash -lc 'tbexport -h' | grep -A3 EXCLUDE
 #    import 쪽 EXCLUDE_TABLE 은 도움말에 명시돼 있어 더 안전하다.
 EXCLUDE_TABLES="${EXCLUDE_TABLES:-}"
 

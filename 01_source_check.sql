@@ -85,7 +85,7 @@ SET LONG 20000
 DECLARE
   v CLOB;
 BEGIN
-  v := DBMS_METADATA.GET_DDL('TABLE','T_AAAA_CMMN01C','AIMS_DEV');
+  v := DBMS_METADATA.GET_DDL('TABLE','T_ITSE_CMMN01C','AIMS_DEV');
   DBMS_OUTPUT.PUT_LINE('DBMS_METADATA 사용 가능. 길이=' || DBMS_LOB.GETLENGTH(v));
   DBMS_OUTPUT.PUT_LINE(SUBSTR(v,1,3000));
 EXCEPTION WHEN OTHERS THEN
@@ -117,7 +117,7 @@ PROMPT ================================================================
 COL sybl_nm FORMAT A40
 COL raw_bytes FORMAT A120
 SELECT SYBL_NM, DUMP(SYBL_NM,16) AS raw_bytes
-  FROM AIMS_EX.T_TIPA_VMS_SYBL_01I
+  FROM AIMS_EX.T_ITSE_VMS_SYBL_01I
  WHERE ROWNUM <= 5;
 
 PROMPT -- 판독법:
@@ -127,7 +127,7 @@ PROMPT --   3f 가 섞여 있음                    -> 원본에서 이미 '?' �
 
 SELECT column_name, data_type, data_length, char_used
   FROM all_tab_columns
- WHERE owner='AIMS_DEV' AND table_name='T_TIPA_VMS_SYBL_01I'
+ WHERE owner='AIMS_EX' AND table_name='T_ITSE_VMS_SYBL_01I'
  ORDER BY column_id;
 
 PROMPT
