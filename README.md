@@ -19,6 +19,19 @@
 > 덤프와 로그는 `~/alex/tibero7_ut/work/` 에 남아 있다(볼륨). 재적재가 필요하면
 > 추출 없이 `03_export_import.sh import` 만 다시 돌리면 된다.
 
+> ## ✅ 2차 이관 완료 (2026-08-13) — 테이블명 규약 변경분
+>
+> | 항목 | 결과 |
+> |---|---|
+> | 테이블 건수 | **260/260 일치** — 5,182,877행 |
+> | 뷰 실제 조회 | 성공 59 / 실패 0 |
+> | 무효 객체 | 1건 — **소스와 동일** (`AIMSC_DEV` 패키지 본문) |
+> | 제약조건·인덱스 | 이상 0건 |
+> | 한글 바이트 | 소스와 동일 |
+> | 계정 롤 | 소스와 일치 (`CONNECT`/`RESOURCE`/`DBA`) |
+>
+> 타겟: `tibero7_ut_tablename` / `TAIMS` / MSWIN949 / 호스트 포트 **28629**
+
 공동 작업용 Tibero DB(`121.137.106.217:58629/TAIMS`)의 `AIMS_EX` / `AIMS_DEV` / `AIMSC_DEV` 스키마를
 사내 서버의 **docker `tibero7_ut`** 인스턴스로 복제한다.
 
@@ -26,38 +39,92 @@
 스키마 rename 은 Oracle 호환 DB에서 불가능하고, 다른 스키마명으로 적재하면 뷰·시노님 정의문이 깨진다.
 그래서 별도 인스턴스(`tibero7_ut`)를 새로 만들었다 — `docker-compose.yml` 참고.
 
-## 2차 UT — 테이블명 규약 변경분 (진행 중)
+## 인스턴스 3개 — 어디에 붙을지부터 확인할 것
 
-소스의 테이블명이 규약에 따라 변경돼 별도 인스턴스로 다시 복제한다.
-**스크립트 기본값은 이제 2차 환경을 가리킨다.**
+접속 정보가 **포트만 다르다.** DB명(`TAIMS`)도 스키마명도 전부 같아서 틀리기 쉽다.
 
-| | 1차 (변경 전) | 2차 (변경 후) |
-|---|---|---|
-| 컨테이너 | `tibero7_ut` | **`tibero7_ut_tablename`** |
-| 호스트 포트 | 18629 | **28629** |
-| 서버 폴더 | `~/alex/tibero7_ut/` | **`~/alex/tibero7_ut_tablename/`** |
-| DB명 / 캐릭터셋 | TAIMS / MSWIN949 | 동일 |
-| 상태 | 완료 — **비교 기준으로 유지** | 진행 중 |
+| 포트 | 컨테이너 | 서버 폴더 | 내용 |
+|---|---|---|---|
+| 8629 | `tibero7` | `~/alex/tibero7/` | **개발용.** 건드리지 말 것 |
+| 18629 | `tibero7_ut` | `~/alex/tibero7_ut/` | 1차 UT — 변경 **전** 이름. 비교 기준으로 유지 |
+| **28629** | **`tibero7_ut_tablename`** | **`~/alex/tibero7_ut_tablename/`** | **2차 UT — 변경 후 이름. 현재 기본값** |
 
-1차를 다룰 때는 환경변수로 되돌린다.
+스크립트 기본값은 2차를 가리킨다. 1차를 다룰 때만 환경변수로 되돌린다.
 
 ```bash
 RPATH=alex/tibero7_ut/migration CONTAINER=tibero7_ut ./sync.sh up
 CONTAINER=tibero7_ut ./03_export_import.sh check
 ```
 
-`11_name_diff.sh` 의 `OLD_CONTAINER` 만 `tibero7_ut` 로 남겨뒀다 — 변경 전 스냅샷이
+`11_name_diff.sh` 의 `OLD_CONTAINER` 만 `tibero7_ut` 로 고정돼 있다 — 변경 전 스냅샷이
 비교 기준이기 때문이다.
 
-### 순서
+## 2차 이관 — 테이블명 규약 변경 (2026-08-13)
 
-1. **소스 실측** — `10_source_inventory.sql`. 스키마명·테이블명을 하나도 가정하지 않고 뽑는다
-2. **변경 대조** — `11_name_diff.sh`. 유지/신규/삭제를 집계하고, 스크립트에 박힌 6개
-   테이블명이 살아있는지 점검한다
-3. **인스턴스 기동** — `docker-compose.ut_tablename.yml` 을 `~/alex/tibero7_ut_tablename/docker-compose.yml`
-   로 복사 후 `docker compose up -d`. 기동 후 `Export character set: MSWIN949` 확인
-4. **스크립트 조정** — 2의 결과에 맞춰 `02`/`03`/`05`/`09` 의 테이블명, `04b`/`09` 의 계정
-5. **이관** — `dsn` → `validate` → `check` → `pilot` → `export` → `import` → `07` → `05` → `06`
+### 무엇이 바뀌었나
+
+**세 계열의 접두사가 `T_ITSE_` 하나로 통합됐다.** 뒷부분은 그대로다.
+
+```
+AIMS_DEV.T_AAAA_CMMN01C         ->  AIMS_DEV.T_ITSE_CMMN01C
+AIMS_DEV.T_AAAB_CCAD01M         ->  AIMS_DEV.T_ITSE_CCAD01M
+AIMS_EX.T_TIPA_VMS_SYBL_01I     ->  AIMS_EX.T_ITSE_VMS_SYBL_01I
+AIMS_EX.T_TIPG_TBSP_STAT_01L    ->  AIMS_EX.T_ITSE_TBSP_STAT_01L
+```
+
+**바뀌지 않은 것**: 스키마명, 시노님의 동명 1:1 구조, LOB 컬럼명, 테이블스페이스명,
+캐릭터셋(MSWIN949). 뷰도 `V_AAAA_` → `V_ITSE_` 로 같은 규칙을 따랐다.
+패키지명 `P_AAAA_PRTT_TBL_MGMT` 만 옛 이름 그대로다.
+
+### 1차 대비 구성 변화
+
+| | 1차 (8/10) | 2차 (8/13) |
+|---|---|---|
+| 전체 테이블 | 416 | **260** |
+| 전체 행 | 4,802,221 | **5,182,877** |
+| `AIMS_EX` | 101 테이블 / 954MB | 동일 |
+| `AIMS_DEV` | 158 테이블 / 58 뷰 | **159 / 59** (신규 추가 있음) |
+| `AIMSC_DEV` | 157 테이블(전부 0행) | **테이블 없음** — 시노님 100 + 패키지만 |
+
+`AIMSC_DEV` 의 테이블·뷰가 소스에서 사라졌다. 계정은 `OPEN` 이고 시노님 100개와
+패키지가 남아 있다. `DBA_TABLES` 로도 0건이라 권한 문제가 아니라 실제 삭제다.
+이관 범위에는 그대로 두었다 — 시노님·패키지가 있어 추출 대상이 되고, 소스 상태를
+있는 그대로 복제하는 것이 맞다.
+
+### 발견 절차
+
+이름이 바뀐 상태에서는 기존 스크립트를 믿을 수 없다. 아무것도 가정하지 않는
+단계를 앞에 두었다.
+
+1. **`10_source_inventory.sql`** — 스키마명조차 하드코딩하지 않고 시스템 계정만 제외해
+   전수 조회. 테이블/뷰/시노님 목록을 대조용 형식으로 파일에 남긴다
+2. **`11_name_diff.sh`** — 1차 UT(변경 전 스냅샷)와 대조. 유지/신규/삭제를 스키마별로
+   집계하고, 스크립트에 박힌 테이블명이 살아있는지 점검한다
+
+1차 UT 를 남겨둔 덕분에 변경 내역을 기계적으로 뽑을 수 있었다. **비교 기준이 되는
+인스턴스를 지우지 말 것.**
+
+### 이름 의존을 줄인 조치
+
+같은 일이 반복될 것을 전제로 검증부를 고쳤다.
+
+- `02` / `05` 의 **LOB 검증** — 하드코딩 5개 테이블을 버리고 딕셔너리에서 BLOB/CLOB
+  컬럼을 찾아 동적 집계. 테이블·컬럼명을 아예 참조하지 않는다
+- `05` 의 **한글 검증 표본** — `DEFINE KOR_TAB` / `KOR_COL` / `CODE_TAB` 로 분리.
+  다음에 바뀌면 세 줄만 고치면 된다
+- `06` 의 수동 점검 항목도 특정 테이블명을 뺐다
+
+여전히 이름에 의존하는 곳: `03` 의 `PILOT_TABLE`, `01` 의 `DBMS_METADATA` 대상.
+둘 다 한 줄짜리라 그대로 두었다.
+
+### 이번에 걸린 것
+
+| 증상 | 원인 | 조치 |
+|---|---|---|
+| `TBR-7071: SYS.USER_PATH not found` 2건 | 소스의 **DIRECTORY 객체**에 대한 `GRANT` 를 옮기려다 실패. 타겟에 그 디렉터리가 없다 | 데이터와 무관. 앱이 파일 I/O 를 쓰면 타겟에도 `CREATE DIRECTORY` 필요 |
+| `AIMSC_DEV` 패키지 본문 `INVALID` | 본문이 옛 이름 `T_AAAA_DB_JOB_PROS01L` 을 참조. **소스도 동일하게 무효** | 정상 복제. 고칠 대상은 소스 |
+| `aims_dev` 로 접속 시 `AIMSC_DEV` 안 보임 | 소스는 세 계정 모두 `DBA` 인데 `04b` 가 `CONNECT`/`RESOURCE` 만 부여 | `GRANT DBA` 추가 (아래) |
+
 
 ## 왜 기존 덤프를 쓰지 않는가
 
@@ -90,6 +157,9 @@ CONTAINER=tibero7_ut ./03_export_import.sh check
 | `04b_target_create.sql` | Phase 2 | 테이블스페이스 4개 + 계정 3개 생성 **(변경 발생)** |
 | `08_expected_from_exportlog.sh` | Phase 4 | 추출 로그에서 기대 건수 산출 — **검증의 기준값** |
 | `09_refresh.sh` | 운영 | 전량 재적재 — 초기화→추출→적재→재컴파일→검증 **(변경 발생)** |
+| `10_source_inventory.sql` | 재실측 | 아무것도 가정하지 않고 소스 전수 조회 (읽기 전용) |
+| `11_name_diff.sh` | 재실측 | 소스 현재 vs 1차 UT 대조 — 이름 변경 내역 추출 |
+| `docker-compose.ut_tablename.yml` | Phase 2 | 2차 인스턴스 정의 (28629) |
 | `db-structure.html` | 참고 | DB 구조 설명 (그림 버전). 브라우저로 열면 된다 |
 | `01b`/`01c` | Phase 0 | 이관 범위·시노님 대상 스키마 확정 (읽기 전용) |
 
