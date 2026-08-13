@@ -87,6 +87,7 @@ cmd_up() {
   echo "\$ rsync $(rsync_opt) [스크립트] $REMOTE:~/$RPATH/"
   rsync $(rsync_opt) -e "ssh $SSH_OPTS" \
     --include='*.sh' --include='*.sql' --include='*.md' \
+    --include='*.yml' --include='*.html' \
     --exclude='results/***' --exclude='*.log' --exclude='*_out_*' --exclude='*' \
     "$LOCAL"/ "$REMOTE:$RPATH/"
   echo

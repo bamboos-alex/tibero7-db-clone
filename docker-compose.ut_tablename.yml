@@ -1,0 +1,50 @@
+# 2차 UT 인스턴스 — 테이블명 규약 변경분 이관용
+#
+# 배치: ~/alex/tibero7_ut_tablename/docker-compose.yml  (이 파일을 그 이름으로 복사)
+#
+# 1차(tibero7_ut, 18629)는 변경 전 스냅샷으로 유지한다. 11_name_diff.sh 가 그것을
+# 비교 기준으로 쓰므로 지우면 안 된다.
+#
+# 기동 전 준비:
+#   mkdir -p ~/alex/tibero7_ut_tablename/{license,data,work}
+#   cp ~/alex/tibero7_ut/license/license.xml ~/alex/tibero7_ut_tablename/license/
+#
+# 기동:
+#   cd ~/alex/tibero7_ut_tablename
+#   docker compose up -d && docker compose logs -f     # "Tibero is Ready To Use!" 대기
+#
+# 기동 후 반드시 확인 (MSWIN949 가 아니면 ./data 비우고 다시 만들어야 한다):
+#   docker exec tibero7_ut_tablename bash -lc 'tbexport USERNAME=sys PASSWORD=tibero123 \
+#     IP=localhost PORT=8629 SID=TAIMS TABLE=SYS.DUAL FILE=/tmp/chk.dat LOG=/tmp/chk.log \
+#     OVERWRITE=Y 2>&1 | grep -i "character set"'
+
+services:
+  tibero:
+    image: tiberoofficial/tibero:latest
+    container_name: tibero7_ut_tablename
+    hostname: localhost          # 라이선스의 identified_by_host 와 일치해야 부팅된다
+
+    environment:
+      TB_ROOT_PASSWORD: tibero123
+
+      TB_SID: TAIMS              # 소스와 DB명 일치 — 접속 문자열이 호스트·포트만 달라진다
+      CHAR_SET: MSWIN949         # 소스 실측값. UTF8 로 만들면 CP949->UTF-8 변환으로
+                                 # 길이가 1.5배가 되어 6,131개 중 2,469개 컬럼이 넘친다
+
+      TEMP_SIZE: 1G
+      TEMP_AUTOEXTEND: Y
+      UNDO_SIZE: 1G
+      UNDO_AUTOEXTEND: Y
+
+    ports:
+      - "28629:8629"             # 1차는 18629, 개발용은 8629
+
+    volumes:
+      - ./license/license.xml:/opt/tibero7/license/license.xml
+      - ./data:/opt/tibero7/database
+      - ./work:/tmp/tbmig        # 덤프·로그. 컨테이너를 다시 만들어도 남는다
+      # ./init 은 마운트하지 않는다 — appuser/test 데모 테이블 방지
+
+    shm_size: 2gb
+
+    restart: unless-stopped
