@@ -29,9 +29,34 @@
 --   3. VARCHAR -> VARCHAR2 (Tibero 내부 표기. 동작 동일)
 --
 -- 파티션은 2026-08 / 2026-09 두 달 + PMAX 로 시작한다 (형제 테이블과 동일).
--- 이후 월별 파티션은 P_ITSE_PRTT_TBL_MGMT 패키지가 담당하는 것으로 보이며,
--- 이 신규 테이블이 그 대상에 포함되는지 **반드시 확인할 것** (파일 하단 [4] 참조).
--- 등록되지 않으면 10월분부터 전부 PMAX 한 파티션에 쌓인다.
+--
+-- ** 월별 파티션 자동 추가는 현재 동작하지 않는다 (2026-08-16 확인) **
+--   P_ITSE_PRTT_TBL_MGMT.sp_manage_partiton 이 담당하지만, 대상을 설정 테이블
+--   T_ITSE_DATA_BCKP_STUP01P 에서 읽는데 그 테이블이 **0행**이다.
+--   이름 규칙이나 전수 순회가 아니라 명시적 등록 방식이라, 등록 전에는 무동작이다.
+--   형제 테이블들의 P202608/P202609 도 이 잡이 만든 게 아니라 생성 DDL 에 있던 것이다.
+--
+--   등록하지 않아도 깨지지 않는다 — 2026-10-01 이후 데이터는 PMAX 가 전부 받는다.
+--   조회·입력 정상이고 파티션 프루닝 이득만 줄어든다. 형제 테이블도 같은 처지다.
+--
+--   보관 정책이 정해지면 아래 한 줄로 등록한다. 단 sp_drop_part 는 보관 기간이
+--   지난 파티션을 DROP PARTITION 한다 — 백업이 아니라 **영구 삭제**다.
+--
+--     INSERT INTO AIMS_DEV.T_ITSE_DATA_BCKP_STUP01P
+--       (TBL_NM, DATA_KPNG_MNTHS_CNT, DATA_PRTT_CLMN_TYPE_CD, DATA_PRTT_CLMN_FRMT,
+--        TBSP_NM, PRTT_TBL_NM, LSTTM_MODFR_ID, LSTTM_ALTR_DTTM)
+--     VALUES
+--       ('T_ITSE_AI_MVPCT_DGNST01L', <보관개월>, 'D', NULL,
+--        'TS_AIMS_HIST_DATA', NULL, USER, SYSDATE);
+--
+--   'D'=DATE형 키, PRTT_TBL_NM=NULL 이면 접미사 없는 P202608 형태.
+--   DATA_PRTT_CLMN_FRMT 는 문자형('C')일 때만 쓰이므로 NULL.
+--   등록해도 sp_manage_partiton 을 호출하는 스케줄 잡이 없으면 여전히 무동작이다.
+--
+-- ** 인덱스를 LOCAL 로 만들어야 하는 또 하나의 이유 **
+--   sp_rebuild_part_index 는 USER_IND_PARTITIONS 만 보고 재구축한다. 즉 로컬
+--   인덱스 파티션만 손댄다. GLOBAL 인덱스는 SPLIT PARTITION 때 통째로 UNUSABLE
+--   이 되는데 이 프로시저가 건드리지 않아 죽은 채 방치된다.
 
 SET LINESIZE 200
 SET PAGESIZE 200
@@ -151,16 +176,10 @@ SELECT constraint_name, constraint_type, status
 
 PROMPT
 PROMPT ================================================================
-PROMPT 남은 확인 — 월별 파티션 자동 추가
-PROMPT   AIMS_DEV.P_ITSE_PRTT_TBL_MGMT 패키지가 대상 테이블을 어떻게 고르는지 확인할 것.
-PROMPT   이름 규칙(T_ITSE_%01L)이나 all_part_tables 전수라면 자동으로 포함되고,
-PROMPT   목록이 박혀 있거나 설정 테이블을 읽는다면 이 테이블을 등록해야 한다.
-PROMPT
-PROMPT   SELECT text FROM all_source
-PROMPT    WHERE owner='AIMS_DEV' AND name='P_ITSE_PRTT_TBL_MGMT'
-PROMPT      AND type='PACKAGE BODY' ORDER BY line;
-PROMPT
-PROMPT   등록되지 않으면 2026-10 이후 데이터가 전부 PMAX 한 파티션에 쌓인다.
+PROMPT 참고 — 2026-10 이후 데이터는 PMAX 파티션에 쌓인다.
+PROMPT   월별 파티션 자동 추가 잡(P_ITSE_PRTT_TBL_MGMT)의 설정 테이블
+PROMPT   T_ITSE_DATA_BCKP_STUP01P 가 0행이라 현재 무동작이다. 형제 테이블도 같다.
+PROMPT   동작에는 문제가 없다. 등록 방법은 이 파일 상단 주석 참조.
 PROMPT ================================================================
 
 -- tbsql 이 SQL> 프롬프트에서 대기하지 않도록 반드시 종료한다.
