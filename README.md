@@ -168,6 +168,7 @@ AIMS_EX.T_TIPG_TBSP_STAT_01L    ->  AIMS_EX.T_ITSE_TBSP_STAT_01L
 | `docker-compose.ut_tablename.yml` | Phase 2 | 2차 인스턴스 정의 (28629) |
 | `db-structure.html` | 참고 | DB 구조 설명 (그림 버전). 브라우저로 열면 된다 |
 | `01b`/`01c` | Phase 0 | 이관 범위·시노님 대상 스키마 확정 (읽기 전용) |
+| `12_create_ai_mvpct_dgnst01l.sql` | 신규 | AI 영상화질 진단 이력 테이블 생성 — 파티션 + 로컬 인덱스 **(변경 발생)** |
 
 ## 파일 동기화
 
