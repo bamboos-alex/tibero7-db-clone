@@ -73,8 +73,14 @@ AIMS_EX.T_TIPG_TBSP_STAT_01L    ->  AIMS_EX.T_ITSE_TBSP_STAT_01L
 ```
 
 **바뀌지 않은 것**: 스키마명, 시노님의 동명 1:1 구조, LOB 컬럼명, 테이블스페이스명,
-캐릭터셋(MSWIN949). 뷰도 `V_AAAA_` → `V_ITSE_` 로 같은 규칙을 따랐다.
-패키지명 `P_AAAA_PRTT_TBL_MGMT` 만 옛 이름 그대로다.
+캐릭터셋(MSWIN949).
+
+뷰(`V_AAAA_` → `V_ITSE_`)와 패키지(`P_AAAA_PRTT_TBL_MGMT` → `P_ITSE_PRTT_TBL_MGMT`)도
+같은 규칙을 따랐다. 다만 **인덱스·제약조건 이름은 테이블마다 다르다** — 개명 전부터
+있던 테이블은 `PK_AAAA_*` 를 유지하고, 새로 만든 `T_ITSE_AI_*` 계열은 `PK_ITSE_*` 를 쓴다.
+
+`AIMSC_DEV` 의 패키지만 옛 이름 `P_AAAA_PRTT_TBL_MGMT` 로 남아 있고 `INVALID` 다.
+이 스키마 전체가 정리되지 않은 상태다.
 
 ### 1차 대비 구성 변화
 
