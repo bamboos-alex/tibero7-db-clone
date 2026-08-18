@@ -206,6 +206,7 @@ AIMS_EX.T_TIPG_TBSP_STAT_01L    ->  AIMS_EX.T_ITSE_TBSP_STAT_01L
 | `16_aimsc_synonym.sql` | 신규 | AIMSC_DEV 에 T_ITSE_CCTV_01M 시노님 추가 **(변경 발생)** |
 | `17_aq_tables_ddl.sql` | 이식 | AQ 앱 테이블 15개 생성 DDL — 다른 DB 로 옮길 때 쓴다 **(변경 발생)** |
 | `18_aq_tables_dbeaver.sql` | 이식 | 같은 DDL 의 **DBeaver 실행용** 순수 SQL 판 — 블록별로 골라 실행 **(변경 발생)** |
+| `19_aq_verify_dbeaver.sql` | 이식 | 18 실행 결과 확인 — 요약 1개 + 상세 8개 (읽기 전용) |
 
 ## 파일 동기화
 
