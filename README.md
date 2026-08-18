@@ -32,6 +32,36 @@
 >
 > 타겟: `tibero7_ut_tablename` / `TAIMS` / MSWIN949 / 호스트 포트 **28629**
 
+> ## ✅ AIMSC_DEV 이력 테이블 파티션 재구축 완료 (2026-08-18)
+>
+> AI 영상품질진단 앱이 쓰는 테이블 15개를 실측해 정리했다. 정의서가 필요한
+> 테이블은 **0개**였다 — 12개는 이미 `AIMSC_DEV` 에 있었고 3개는 다른 스키마의
+> 실테이블이었다.
+>
+> | 항목 | 결과 |
+> |---|---|
+> | 이력(`_01L`) 재구축 | **8/8** — 건수 차이 0 |
+> | 인덱스 | 8개 전부 `UNIQUE` + `PARTITIONED=YES` (**로컬**) |
+> | 파티션 | 8개 × `RANGE` 3개 (`P202608`/`P202609`/`PMAX`) |
+> | PK 제약 | 8개 전부 `ENABLED` / `VALIDATED` |
+> | 마스터(`_01M`) 4개 | 손대지 않음 — 파티션 불필요, 배치도 관례대로 |
+> | 시노님 | `HDQR`/`MTNOF` 기존 유지 + `CCTV` 신규 추가 |
+>
+> **백업 테이블 `T_..._BAK` 8개가 남아 있다.** 되돌릴 유일한 수단이라 자동으로
+> 지우지 않았다. 앱 동작을 확인한 뒤 `DROP` 할 것.
+>
+> ⚠ **파티션 키 6개가 `NOT NULL` 이 됐다.** 앞으로 앱이 이 컬럼에 `NULL` 을
+> 넣으면 `INSERT` 가 실패한다 — `T_ITSE_AI_DRF_DGNST01L.AI_DGNST_DTTM`,
+> `T_ITSE_AI_MODL_OP01L.MNTG_STRT_DTTM`, `T_ITSE_AI_MVPCT_DGNST01L.AI_DGNST_DTTM`,
+> `T_ITSE_ANNT01L.INFO_CRET_DTTM`, `T_ITSE_LBLL01L.INFO_CRET_DTTM`,
+> `T_ITSE_SNSH_GTHR01L.STRT_DTTM`.
+>
+> ⚠ **PK 가 복합키(`기존PK`, `파티션키`)가 됐다.** 기존 PK 컬럼 단독 유일성은
+> 이제 DB 가 보장하지 않는다. 로컬 유니크 인덱스의 요건이라 피할 수 없다.
+>
+> 남은 것: `AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L` 이 중복으로 남아 있다
+> (`12_create_ai_mvpct_dgnst01l.sql` 산물). 앱은 `AIMSC_DEV` 를 쓰므로 정리 대상.
+
 공동 작업용 Tibero DB(`121.137.106.217:58629/TAIMS`)의 `AIMS_EX` / `AIMS_DEV` / `AIMSC_DEV` 스키마를
 사내 서버의 **docker `tibero7_ut`** 인스턴스로 복제한다.
 
