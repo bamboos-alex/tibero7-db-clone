@@ -1,0 +1,537 @@
+-- AQ 앱 테이블 15개 — 생성 DDL (신규 DB 대상)        ** 실제 변경이 일어난다 **
+--
+-- 대상을 반드시 먼저 확인할 것. 인스턴스가 여럿이고 접속 정보가 포트만 다르다.
+--   8629  tibero7                개발용
+--   18629 tibero7_ut             1차 UT
+--   28629 tibero7_ut_tablename   2차 UT — 여기엔 이미 만들어져 있다
+--   58629 121.137.106.217        원천 공동작업 DB  ** 여러 사람이 함께 쓴다 **
+--
+-- 실행 (컨테이너에서 원천 DSN 으로 붙는 경우):
+--   docker exec -it tibero7_ut_tablename bash -lc \
+--     'cd /tmp/tbmig && tbsql aimsc_dev/<비밀번호>@SRC @17_aq_tables_ddl.sql'
+--   SRC DSN 등록은 03_export_import.sh dsn 으로 이미 돼 있다.
+--
+-- ** 이 스크립트에는 DROP 이 한 줄도 없다. ** 순수 추가만 한다.
+-- 같은 이름이 이미 있으면 그 문장만 실패하고 나머지는 계속 진행된다.
+-- 그래서 [0] 사전 확인 결과를 먼저 보고 판단해야 한다.
+--
+-- === 구성 ===
+--   마스터 4개  파티션 없음                            &TBS_DATA
+--   이력  8개   월별 RANGE 파티션 + 로컬 유니크 인덱스  &TBS_HIST_DATA / &TBS_HIST_IDX
+--   시노님 3개  CCTV / 본사 / 지사 -> AIMS_EX 실테이블
+--
+-- === 근거 ===
+--   파티션·인덱스 관례: AIMS_DEV.T_ITSE_AI_BRDW_JDG01L 의 GET_DDL 실측(2026-08-16)
+--   컬럼 정의: 2차 UT(28629) AIMSC_DEV 의 현재 상태를 그대로 옮긴 것
+--
+-- === 알고 있어야 할 것 둘 ===
+--   1. 이력 8개의 PK 는 (업무ID, 파티션키) 복합키다.
+--      Oracle 호환 DB 에서 로컬 유니크 인덱스는 파티션 키를 반드시 포함해야
+--      한다. Global Index 를 쓰지 않는 이상 피할 수 없다.
+--      => 업무ID 단독 유일성은 DB 가 보장하지 않는다.
+--
+--   2. 파티션 키 컬럼은 NOT NULL 이다. 앱이 NULL 을 넣으면 INSERT 가 실패한다.
+--      특히 T_ITSE_AI_MODL_OP01L.MNTG_STRT_DTTM — 모니터링 시작 전에 행을
+--      먼저 등록하는 흐름이라면 이 테이블은 파티션 대상에서 빼야 한다.
+--      (해당 CREATE 블록을 지우고 파티션 없는 형태로 만들면 된다)
+--
+-- === 파티션 ===
+--   P202608 / P202609 / PMAX 로 시작한다. 2026-10 이후 데이터는 PMAX 가 받는다.
+--   월별 자동 추가는 별도 등록이 필요하다 (파일 하단 참조).
+
+-- ---------------------------------------------------------------
+-- 대상에 맞게 이 네 줄만 고치면 된다
+-- ---------------------------------------------------------------
+DEFINE SCHEMA        = "AIMSC_DEV"
+DEFINE TBS_DATA      = "TS_AIMS_DATA"
+DEFINE TBS_HIST_DATA = "TS_AIMS_HIST_DATA"
+DEFINE TBS_HIST_IDX  = "TS_AIMS_HIST_IDX"
+
+SET LINESIZE 300
+SET PAGESIZE 200
+SET TRIMSPOOL ON
+
+SPOOL 17_aq_tables_ddl.log
+
+PROMPT === 대상 확인 — 접속한 DB 가 맞는지 반드시 볼 것 ===
+SELECT USER AS connected_user, SYSDATE AS started_at FROM DUAL;
+
+PROMPT
+PROMPT ================================================================
+PROMPT [0] 사전 확인 — 이미 있는 이름이 있는가
+PROMPT     여기 뭔가 나오면 해당 CREATE 는 실패한다. 계속할지 판단할 것.
+PROMPT ================================================================
+COL owner FORMAT A12
+COL object_name FORMAT A30
+COL object_type FORMAT A14
+SELECT owner, object_name, object_type, status FROM all_objects
+ WHERE object_name IN (
+       'T_ITSE_AI_CCTV01M','T_ITSE_AI_MODL01M',
+       'T_ITSE_DATST01M','T_ITSE_SNSH_STUP01M',
+       'T_ITSE_SNSH_GTHR01L','T_ITSE_SNSH_PRPG01L',
+       'T_ITSE_LBLL01L','T_ITSE_ANNT01L',
+       'T_ITSE_AI_DGNST01L','T_ITSE_AI_MVPCT_DGNST01L',
+       'T_ITSE_AI_DRF_DGNST01L','T_ITSE_AI_MODL_OP01L',
+       'T_ITSE_CCTV_01M','T_ITSE_HDQR_01M',
+       'T_ITSE_MTNOF_01M')
+ ORDER BY object_name, owner;
+PROMPT   (아무것도 없으면 15개 모두 신규다)
+
+PROMPT
+PROMPT -- 시노님 대상이 존재하는가 (없으면 시노님을 만들어도 무효가 된다)
+SELECT owner, object_name, object_type FROM all_objects
+ WHERE owner='AIMS_EX'
+   AND object_name IN ('T_ITSE_CCTV_01M','T_ITSE_HDQR_01M','T_ITSE_MTNOF_01M')
+ ORDER BY object_name;
+
+PROMPT
+PROMPT -- 테이블스페이스가 존재하는가 (셋 다 나와야 한다)
+SELECT tablespace_name, ROUND(SUM(bytes)/1024/1024) AS mb FROM dba_data_files
+ WHERE tablespace_name IN ('&TBS_DATA','&TBS_HIST_DATA','&TBS_HIST_IDX')
+ GROUP BY tablespace_name ORDER BY 1;
+
+PROMPT
+PROMPT ################################################################
+PROMPT ## 마스터 테이블 4개 — 파티션 없음
+PROMPT ################################################################
+
+PROMPT
+PROMPT -- T_ITSE_AI_CCTV01M   (PK CCTV_ID)
+CREATE TABLE &SCHEMA..T_ITSE_AI_CCTV01M
+(
+    "CCTV_ID"                    VARCHAR2(12)   NOT NULL,
+    "INFO_CRET_DTTM"             DATE,
+    "INFO_UPDT_DTTM"             DATE,
+    "TRFC_EQPM_TYPE_CD"          VARCHAR2(2),
+    "CCTV_RTSP_URL"              VARCHAR2(255),
+    "CCTV_LNKN_STAT_CD"          VARCHAR2(2),
+    "HDQR_ID"                    VARCHAR2(6),
+    "MTNOF_ID"                   VARCHAR2(6),
+    "LOCATION"                   VARCHAR2(1000)
+)
+TABLESPACE &TBS_DATA;
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_AI_CCTV01M" ON &SCHEMA..T_ITSE_AI_CCTV01M ("CCTV_ID")
+    TABLESPACE &TBS_DATA;
+
+ALTER TABLE &SCHEMA..T_ITSE_AI_CCTV01M ADD CONSTRAINT "PK_T_ITSE_AI_CCTV01M" PRIMARY KEY ("CCTV_ID");
+
+PROMPT
+PROMPT -- T_ITSE_AI_MODL01M   (PK AI_MODL_ID)
+CREATE TABLE &SCHEMA..T_ITSE_AI_MODL01M
+(
+    "AI_MODL_ID"                 VARCHAR2(36)   NOT NULL,
+    "AI_MODL_NM"                 VARCHAR2(200),
+    "AI_MODL_VRSN_NM"            VARCHAR2(100),
+    "AI_MODL_STAT_CD"            VARCHAR2(2),
+    "AI_MODL_USE_OBJTV_CTNT"     VARCHAR2(1000),
+    "AI_MODL_FLNM"               VARCHAR2(300),
+    "DATST_ID"                   VARCHAR2(36)   NOT NULL,
+    "EXPRM_ID"                   VARCHAR2(36),
+    "TRNG_STRT_DTTM"             DATE,
+    "TRNG_END_DTTM"              DATE,
+    "BTCH_SIZE_VAL"              NUMBER(10,0),
+    "STUD_RT"                    NUMBER(5,2),
+    "EPCH_CNT"                   NUMBER(10,0),
+    "MODL_USE_STRT_DTTM"         DATE,
+    "TRNG_STUP_CTNT"             VARCHAR2(4000),
+    "AI_DGNST_TYPE_CD"           VARCHAR2(2),
+    "TRNG_ACRC_RT"               NUMBER(5,2),
+    "PSNT_AI_ACRC_RT"            NUMBER(5,2),
+    "ACTN_MESR_CTNT"             VARCHAR2(1000)
+)
+TABLESPACE &TBS_DATA;
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_AI_MODL01M" ON &SCHEMA..T_ITSE_AI_MODL01M ("AI_MODL_ID")
+    TABLESPACE &TBS_DATA;
+
+ALTER TABLE &SCHEMA..T_ITSE_AI_MODL01M ADD CONSTRAINT "PK_T_ITSE_AI_MODL01M" PRIMARY KEY ("AI_MODL_ID");
+
+PROMPT
+PROMPT -- T_ITSE_DATST01M   (PK DATST_ID)
+CREATE TABLE &SCHEMA..T_ITSE_DATST01M
+(
+    "DATST_ID"                   VARCHAR2(36)   NOT NULL,
+    "DATST_CRET_DTTM"            DATE,
+    "DATST_UPDT_DTTM"            DATE,
+    "DATST_TYPE_CD"              VARCHAR2(2),
+    "TRFC_EQPM_TYPE_CD"          VARCHAR2(2),
+    "EQPM_CMPN_TYPE_CD"          VARCHAR2(2),
+    "DATST_FILE_PATH"            VARCHAR2(2000),
+    "ORTX_DATA_FILE_PATH"        VARCHAR2(2000),
+    "AI_TRNG_DATA_TYPE_CD"       VARCHAR2(2),
+    "DATA_MSRM_STRT_DTTM"        DATE,
+    "DATA_MSRM_END_DTTM"         DATE,
+    "TRNG_DATST_RATE"            NUMBER(5,2),
+    "LBLL_INFO_FILE_PATH"        VARCHAR2(2000),
+    "ANNT_INFO_FILE_PATH"        VARCHAR2(2000)
+)
+TABLESPACE &TBS_DATA;
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_DATST01M" ON &SCHEMA..T_ITSE_DATST01M ("DATST_ID")
+    TABLESPACE &TBS_DATA;
+
+ALTER TABLE &SCHEMA..T_ITSE_DATST01M ADD CONSTRAINT "PK_T_ITSE_DATST01M" PRIMARY KEY ("DATST_ID");
+
+PROMPT
+PROMPT -- T_ITSE_SNSH_STUP01M   (PK SNSH_STUP_ID)
+CREATE TABLE &SCHEMA..T_ITSE_SNSH_STUP01M
+(
+    "SNSH_STUP_ID"               VARCHAR2(36)   NOT NULL,
+    "INFO_CRET_DTTM"             DATE,
+    "INFO_UPDT_DTTM"             DATE,
+    "SNSH_HOUR_SS"               NUMBER(9,0),
+    "SNSH_INTV_SS"               NUMBER(9,0),
+    "FILE_PATH"                  VARCHAR2(2000),
+    "TRFC_EQPM_TYPE_CD"          VARCHAR2(2)
+)
+TABLESPACE &TBS_DATA;
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_SNSH_STUP01M" ON &SCHEMA..T_ITSE_SNSH_STUP01M ("SNSH_STUP_ID")
+    TABLESPACE &TBS_DATA;
+
+ALTER TABLE &SCHEMA..T_ITSE_SNSH_STUP01M ADD CONSTRAINT "PK_T_ITSE_SNSH_STUP01M" PRIMARY KEY ("SNSH_STUP_ID");
+
+PROMPT
+PROMPT ################################################################
+PROMPT ## 이력 테이블 8개 — 월별 RANGE 파티션 + 로컬 유니크 인덱스
+PROMPT ################################################################
+
+PROMPT
+PROMPT -- T_ITSE_SNSH_GTHR01L   (파티션 키 STRT_DTTM / PK SNSH_GTHR_ID + STRT_DTTM)
+CREATE TABLE &SCHEMA..T_ITSE_SNSH_GTHR01L
+(
+    "SNSH_GTHR_ID"               VARCHAR2(36)   NOT NULL,
+    "STRT_DTTM"                  DATE           NOT NULL,
+    "END_DTTM"                   DATE,
+    "FILE_PATH"                  VARCHAR2(2000),
+    "FILE_CNT"                   NUMBER(10,0),
+    "PRPG_YN"                    VARCHAR2(1),
+    "AI_DGNST_YN"                VARCHAR2(1)
+)
+TABLESPACE &TBS_HIST_DATA
+PARTITION BY RANGE("STRT_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE &TBS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_SNSH_GTHR01L" ON &SCHEMA..T_ITSE_SNSH_GTHR01L ("SNSH_GTHR_ID", "STRT_DTTM")
+    TABLESPACE &TBS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE &TBS_HIST_IDX
+);
+
+ALTER TABLE &SCHEMA..T_ITSE_SNSH_GTHR01L ADD CONSTRAINT "PK_T_ITSE_SNSH_GTHR01L" PRIMARY KEY ("SNSH_GTHR_ID", "STRT_DTTM");
+
+PROMPT
+PROMPT -- T_ITSE_SNSH_PRPG01L   (파티션 키 PRPG_STRT_DTTM / PK PRPG_ID + PRPG_STRT_DTTM)
+CREATE TABLE &SCHEMA..T_ITSE_SNSH_PRPG01L
+(
+    "PRPG_ID"                    VARCHAR2(36)   NOT NULL,
+    "PRPG_STRT_DTTM"             DATE           NOT NULL,
+    "PRPG_END_DTTM"              DATE           NOT NULL,
+    "PRPG_PRGS_RSLT_CD"          VARCHAR2(2)    NOT NULL
+)
+TABLESPACE &TBS_HIST_DATA
+PARTITION BY RANGE("PRPG_STRT_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE &TBS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_SNSH_PRPG01L" ON &SCHEMA..T_ITSE_SNSH_PRPG01L ("PRPG_ID", "PRPG_STRT_DTTM")
+    TABLESPACE &TBS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE &TBS_HIST_IDX
+);
+
+ALTER TABLE &SCHEMA..T_ITSE_SNSH_PRPG01L ADD CONSTRAINT "PK_T_ITSE_SNSH_PRPG01L" PRIMARY KEY ("PRPG_ID", "PRPG_STRT_DTTM");
+
+PROMPT
+PROMPT -- T_ITSE_LBLL01L   (파티션 키 INFO_CRET_DTTM / PK LBLL_ID + INFO_CRET_DTTM)
+CREATE TABLE &SCHEMA..T_ITSE_LBLL01L
+(
+    "LBLL_ID"                    VARCHAR2(36)   NOT NULL,
+    "INFO_CRET_DTTM"             DATE           NOT NULL,
+    "INFO_UPDT_DTTM"             DATE,
+    "FILE_PATH"                  VARCHAR2(2000),
+    "FILE_NM"                    VARCHAR2(500),
+    "FILE_DEL_YN"                VARCHAR2(1),
+    "PRPG_ID"                    VARCHAR2(36)   NOT NULL
+)
+TABLESPACE &TBS_HIST_DATA
+PARTITION BY RANGE("INFO_CRET_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE &TBS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_LBLL01L" ON &SCHEMA..T_ITSE_LBLL01L ("LBLL_ID", "INFO_CRET_DTTM")
+    TABLESPACE &TBS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE &TBS_HIST_IDX
+);
+
+ALTER TABLE &SCHEMA..T_ITSE_LBLL01L ADD CONSTRAINT "PK_T_ITSE_LBLL01L" PRIMARY KEY ("LBLL_ID", "INFO_CRET_DTTM");
+
+PROMPT
+PROMPT -- T_ITSE_ANNT01L   (파티션 키 INFO_CRET_DTTM / PK ANNT_ID + INFO_CRET_DTTM)
+CREATE TABLE &SCHEMA..T_ITSE_ANNT01L
+(
+    "ANNT_ID"                    VARCHAR2(36)   NOT NULL,
+    "INFO_CRET_DTTM"             DATE           NOT NULL,
+    "INFO_UPDT_DTTM"             DATE,
+    "FILE_PATH"                  VARCHAR2(2000),
+    "FILE_NM"                    VARCHAR2(500),
+    "FILE_DEL_YN"                VARCHAR2(1),
+    "PRPG_ID"                    VARCHAR2(36)   NOT NULL
+)
+TABLESPACE &TBS_HIST_DATA
+PARTITION BY RANGE("INFO_CRET_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE &TBS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_ANNT01L" ON &SCHEMA..T_ITSE_ANNT01L ("ANNT_ID", "INFO_CRET_DTTM")
+    TABLESPACE &TBS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE &TBS_HIST_IDX
+);
+
+ALTER TABLE &SCHEMA..T_ITSE_ANNT01L ADD CONSTRAINT "PK_T_ITSE_ANNT01L" PRIMARY KEY ("ANNT_ID", "INFO_CRET_DTTM");
+
+PROMPT
+PROMPT -- T_ITSE_AI_DGNST01L   (파티션 키 STRT_DTTM / PK AI_DGNST_ID + STRT_DTTM)
+CREATE TABLE &SCHEMA..T_ITSE_AI_DGNST01L
+(
+    "AI_DGNST_ID"                VARCHAR2(36)   NOT NULL,
+    "STRT_DTTM"                  DATE           NOT NULL,
+    "END_DTTM"                   DATE           NOT NULL,
+    "AI_DGNST_RSLT_CD"           VARCHAR2(2)    NOT NULL,
+    "FILE_PATH"                  VARCHAR2(2000) NOT NULL
+)
+TABLESPACE &TBS_HIST_DATA
+PARTITION BY RANGE("STRT_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE &TBS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_AI_DGNST01L" ON &SCHEMA..T_ITSE_AI_DGNST01L ("AI_DGNST_ID", "STRT_DTTM")
+    TABLESPACE &TBS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE &TBS_HIST_IDX
+);
+
+ALTER TABLE &SCHEMA..T_ITSE_AI_DGNST01L ADD CONSTRAINT "PK_T_ITSE_AI_DGNST01L" PRIMARY KEY ("AI_DGNST_ID", "STRT_DTTM");
+
+PROMPT
+PROMPT -- T_ITSE_AI_MVPCT_DGNST01L   (파티션 키 AI_DGNST_DTTM / PK AI_MVPCT_DGNST_ID + AI_DGNST_DTTM)
+CREATE TABLE &SCHEMA..T_ITSE_AI_MVPCT_DGNST01L
+(
+    "AI_MVPCT_DGNST_ID"          VARCHAR2(36)   NOT NULL,
+    "AI_DGNST_DTTM"              DATE           NOT NULL,
+    "JDG_NRML_YN"                VARCHAR2(1),
+    "MVPCT_ERR_CTNT"             VARCHAR2(1000),
+    "AI_DGNST_ID"                VARCHAR2(36)   NOT NULL,
+    "CCTV_ID"                    VARCHAR2(12)   NOT NULL,
+    "DGNST_RSLT_FILE_PATH"       VARCHAR2(2000) NOT NULL,
+    "DGNST_TRGT_IMG_FILE_PATH"   VARCHAR2(2000) NOT NULL,
+    "DGNST_RLBLT_RT"             NUMBER(5,2)    NOT NULL,
+    "EXMN_YN"                    CHAR(1)        NOT NULL,
+    "FLPS_YN"                    VARCHAR2(1)
+)
+TABLESPACE &TBS_HIST_DATA
+PARTITION BY RANGE("AI_DGNST_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE &TBS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_AI_MVPCT_DGNST01L" ON &SCHEMA..T_ITSE_AI_MVPCT_DGNST01L ("AI_MVPCT_DGNST_ID", "AI_DGNST_DTTM")
+    TABLESPACE &TBS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE &TBS_HIST_IDX
+);
+
+ALTER TABLE &SCHEMA..T_ITSE_AI_MVPCT_DGNST01L ADD CONSTRAINT "PK_T_ITSE_AI_MVPCT_DGNST01L" PRIMARY KEY ("AI_MVPCT_DGNST_ID", "AI_DGNST_DTTM");
+
+PROMPT
+PROMPT -- T_ITSE_AI_DRF_DGNST01L   (파티션 키 AI_DGNST_DTTM / PK AI_DRF_DGNST_ID + AI_DGNST_DTTM)
+CREATE TABLE &SCHEMA..T_ITSE_AI_DRF_DGNST01L
+(
+    "AI_DRF_DGNST_ID"            VARCHAR2(36)   NOT NULL,
+    "AI_DGNST_DTTM"              DATE           NOT NULL,
+    "JDG_NRML_YN"                VARCHAR2(1),
+    "DRF_ERR_CTNT"               VARCHAR2(1000),
+    "AI_DGNST_ID"                VARCHAR2(36)   NOT NULL,
+    "CCTV_ID"                    VARCHAR2(12)   NOT NULL,
+    "DGNST_RSLT_FILE_PATH"       VARCHAR2(2000) NOT NULL,
+    "DGNST_TRGT_IMG_FILE_PATH"   VARCHAR2(2000) NOT NULL,
+    "DGNST_RLBLT_RT"             NUMBER(5,2)    NOT NULL,
+    "EXMN_YN"                    CHAR(1)        NOT NULL,
+    "FLPS_YN"                    VARCHAR2(1)
+)
+TABLESPACE &TBS_HIST_DATA
+PARTITION BY RANGE("AI_DGNST_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE &TBS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_AI_DRF_DGNST01L" ON &SCHEMA..T_ITSE_AI_DRF_DGNST01L ("AI_DRF_DGNST_ID", "AI_DGNST_DTTM")
+    TABLESPACE &TBS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE &TBS_HIST_IDX
+);
+
+ALTER TABLE &SCHEMA..T_ITSE_AI_DRF_DGNST01L ADD CONSTRAINT "PK_T_ITSE_AI_DRF_DGNST01L" PRIMARY KEY ("AI_DRF_DGNST_ID", "AI_DGNST_DTTM");
+
+PROMPT
+PROMPT -- T_ITSE_AI_MODL_OP01L   (파티션 키 MNTG_STRT_DTTM / PK AI_MODL_OP_ID + MNTG_STRT_DTTM)
+CREATE TABLE &SCHEMA..T_ITSE_AI_MODL_OP01L
+(
+    "AI_MODL_OP_ID"              VARCHAR2(36)   NOT NULL,
+    "AI_MODL_ID"                 VARCHAR2(36)   NOT NULL,
+    "EQPM_TYPE_NM"               VARCHAR2(100),
+    "MNTG_ITM_NM"                VARCHAR2(100),
+    "AI_MODL_USE_OBJTV_CTNT"     VARCHAR2(1000),
+    "MNTG_STRT_DTTM"             DATE           NOT NULL,
+    "MNTG_END_DTTM"              DATE,
+    "AI_MODL_OP_STAT_CD"         VARCHAR2(2),
+    "DGNST_PRFM_STAT_NM"         VARCHAR2(100),
+    "TRNG_STRT_DTTM"             DATE,
+    "TRNG_END_DTTM"              DATE,
+    "DATST_ID"                   VARCHAR2(36)   NOT NULL
+)
+TABLESPACE &TBS_HIST_DATA
+PARTITION BY RANGE("MNTG_STRT_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE &TBS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE &TBS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX &SCHEMA.."PK_T_ITSE_AI_MODL_OP01L" ON &SCHEMA..T_ITSE_AI_MODL_OP01L ("AI_MODL_OP_ID", "MNTG_STRT_DTTM")
+    TABLESPACE &TBS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE &TBS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE &TBS_HIST_IDX
+);
+
+ALTER TABLE &SCHEMA..T_ITSE_AI_MODL_OP01L ADD CONSTRAINT "PK_T_ITSE_AI_MODL_OP01L" PRIMARY KEY ("AI_MODL_OP_ID", "MNTG_STRT_DTTM");
+
+PROMPT
+PROMPT ################################################################
+PROMPT ## 시노님 3개 — 조회 전용. 실테이블을 복제하지 않는다
+PROMPT ################################################################
+--
+-- CCTV / 본사 / 지사 원장은 AIMS_EX 에 하나만 있어야 한다. 같은 이름의
+-- 실테이블을 만들면 원장이 둘이 되어 동기화 문제가 생긴다.
+-- 이 DB 의 기존 시노님 100여 개가 전부 같은 방식이다.
+CREATE SYNONYM &SCHEMA..T_ITSE_CCTV_01M FOR AIMS_EX.T_ITSE_CCTV_01M;
+CREATE SYNONYM &SCHEMA..T_ITSE_HDQR_01M FOR AIMS_EX.T_ITSE_HDQR_01M;
+CREATE SYNONYM &SCHEMA..T_ITSE_MTNOF_01M FOR AIMS_EX.T_ITSE_MTNOF_01M;
+
+PROMPT
+PROMPT ================================================================
+PROMPT 검증
+PROMPT ================================================================
+PROMPT -- 테이블 12개 + 시노님 3개가 모두 VALID 인가
+SELECT object_type, object_name, status FROM all_objects
+ WHERE owner = '&SCHEMA' AND object_name IN (
+       'T_ITSE_AI_CCTV01M','T_ITSE_AI_MODL01M',
+       'T_ITSE_DATST01M','T_ITSE_SNSH_STUP01M',
+       'T_ITSE_SNSH_GTHR01L','T_ITSE_SNSH_PRPG01L',
+       'T_ITSE_LBLL01L','T_ITSE_ANNT01L',
+       'T_ITSE_AI_DGNST01L','T_ITSE_AI_MVPCT_DGNST01L',
+       'T_ITSE_AI_DRF_DGNST01L','T_ITSE_AI_MODL_OP01L',
+       'T_ITSE_CCTV_01M','T_ITSE_HDQR_01M',
+       'T_ITSE_MTNOF_01M')
+ ORDER BY object_type, object_name;
+
+PROMPT
+PROMPT -- 이력 8개: PARTITIONED='YES' / UNIQUENESS='UNIQUE' 여야 로컬 인덱스다
+COL table_name FORMAT A28
+COL index_name FORMAT A30
+COL uniqueness FORMAT A10
+COL partitioned FORMAT A11
+COL tablespace_name FORMAT A20
+SELECT table_name, index_name, uniqueness, partitioned, tablespace_name
+  FROM all_indexes WHERE table_owner='&SCHEMA' AND table_name LIKE '%01L'
+ ORDER BY table_name;
+
+PROMPT
+PROMPT -- 파티션: 8개 x 3 (P202608 / P202609 / PMAX)
+COL partitioning_type FORMAT A10
+SELECT table_name, partitioning_type, partition_count
+  FROM all_part_tables WHERE owner='&SCHEMA' ORDER BY table_name;
+
+PROMPT
+PROMPT -- 파티션 키
+COL name FORMAT A28
+COL column_name FORMAT A24
+SELECT name, column_name, column_position
+  FROM all_part_key_columns WHERE owner='&SCHEMA' ORDER BY name, column_position;
+
+PROMPT
+PROMPT -- PK 제약: ENABLED / VALIDATED
+COL constraint_name FORMAT A30
+COL status FORMAT A10
+COL validated FORMAT A14
+SELECT table_name, constraint_name, status, validated
+  FROM all_constraints WHERE owner='&SCHEMA' AND constraint_type='P'
+   AND (table_name LIKE '%01L' OR table_name LIKE '%01M')
+ ORDER BY table_name;
+
+PROMPT
+PROMPT -- 시노님이 실제로 조회되는가
+SELECT COUNT(*) AS cctv_rows  FROM &SCHEMA..T_ITSE_CCTV_01M;
+SELECT COUNT(*) AS hdqr_rows  FROM &SCHEMA..T_ITSE_HDQR_01M;
+SELECT COUNT(*) AS mtnof_rows FROM &SCHEMA..T_ITSE_MTNOF_01M;
+
+SPOOL OFF
+
+PROMPT
+PROMPT ================================================================
+PROMPT 월별 파티션 자동 추가
+PROMPT   P_ITSE_PRTT_TBL_MGMT.sp_manage_partiton 이 담당하지만 대상을 설정
+PROMPT   테이블 T_ITSE_DATA_BCKP_STUP01P 에서 읽는다. 등록하지 않으면 무동작이고
+PROMPT   2026-10 이후 데이터는 전부 PMAX 에 쌓인다 (동작에는 문제 없음).
+PROMPT
+PROMPT   등록하려면 이력 8개에 대해 아래를 넣는다. 단 sp_drop_part 는 보관 기간이
+PROMPT   지난 파티션을 DROP PARTITION 으로 ** 영구 삭제 ** 한다.
+PROMPT
+PROMPT     INSERT INTO &SCHEMA..T_ITSE_DATA_BCKP_STUP01P
+PROMPT       (TBL_NM, DATA_KPNG_MNTHS_CNT, DATA_PRTT_CLMN_TYPE_CD, DATA_PRTT_CLMN_FRMT,
+PROMPT        TBSP_NM, PRTT_TBL_NM, LSTTM_MODFR_ID, LSTTM_ALTR_DTTM)
+PROMPT     VALUES ('<테이블명>', <보관개월>, 'D', NULL,
+PROMPT             '&TBS_HIST_DATA', NULL, USER, SYSDATE);
+PROMPT ================================================================
+
+-- tbsql 이 SQL> 프롬프트에서 대기하지 않도록 반드시 종료한다.
+EXIT;

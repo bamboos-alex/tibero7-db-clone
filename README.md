@@ -204,6 +204,7 @@ AIMS_EX.T_TIPG_TBSP_STAT_01L    ->  AIMS_EX.T_ITSE_TBSP_STAT_01L
 | `14_aimsc_precheck.sql` | 신규 | 재구축 전 안전 점검 — FK·의존객체·권한·NULL (읽기 전용) |
 | `15_aimsc_hist_rebuild.sql` | 신규 | 이력 8개 파티션+로컬인덱스 재구축 **(변경 발생)** |
 | `16_aimsc_synonym.sql` | 신규 | AIMSC_DEV 에 T_ITSE_CCTV_01M 시노님 추가 **(변경 발생)** |
+| `17_aq_tables_ddl.sql` | 이식 | AQ 앱 테이블 15개 생성 DDL — 다른 DB 로 옮길 때 쓴다 **(변경 발생)** |
 
 ## 파일 동기화
 
