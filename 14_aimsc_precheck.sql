@@ -70,11 +70,15 @@ PROMPT ================================================================
 PROMPT [3] 이 테이블들에 부여된 객체 권한
 PROMPT     DROP 하면 사라진다. 있으면 재생성 후 다시 GRANT 해야 한다.
 PROMPT ================================================================
-SELECT table_name, grantee, privilege, grantor
-  FROM all_tab_privs
- WHERE table_schema = 'AIMSC_DEV' AND table_name LIKE '%01L'
- ORDER BY table_name, grantee;
-PROMPT   (아무것도 없으면 정상. all_tab_privs 컬럼명이 다르면 오류가 난다 -- 알려 주세요)
+-- Tibero 의 ALL_TAB_PRIVS 에는 Oracle 의 TABLE_SCHEMA 컬럼이 없다 (TBR-8026 확인).
+-- 컬럼명을 추측하지 않기 위해 구조를 먼저 찍고, 조회는 SELECT * 로 한다.
+COL column_name FORMAT A24
+SELECT column_name, data_type FROM all_tab_columns
+ WHERE table_name = 'ALL_TAB_PRIVS' ORDER BY column_id;
+
+PROMPT
+SELECT * FROM all_tab_privs WHERE table_name LIKE '%01L';
+PROMPT   (아무것도 없으면 정상)
 
 PROMPT
 PROMPT ================================================================
@@ -93,27 +97,27 @@ PROMPT     NULL 이 1건이라도 있으면 그 테이블의 데이터 복원이
 PROMPT     (PK 컬럼은 NOT NULL 이어야 하기 때문)
 PROMPT ================================================================
 DECLARE
-  TYPE t_rec IS RECORD (tab VARCHAR2(64), col VARCHAR2(64));
-  TYPE t_arr IS TABLE OF t_rec;
-  v t_arr := t_arr(
-    t_rec('T_ITSE_AI_DGNST01L',      'STRT_DTTM'),
-    t_rec('T_ITSE_AI_DRF_DGNST01L',  'AI_DGNST_DTTM'),
-    t_rec('T_ITSE_AI_MODL_OP01L',    'MNTG_STRT_DTTM'),
-    t_rec('T_ITSE_AI_MVPCT_DGNST01L','AI_DGNST_DTTM'),
-    t_rec('T_ITSE_ANNT01L',          'INFO_CRET_DTTM'),
-    t_rec('T_ITSE_LBLL01L',          'INFO_CRET_DTTM'),
-    t_rec('T_ITSE_SNSH_GTHR01L',     'STRT_DTTM'),
-    t_rec('T_ITSE_SNSH_PRPG01L',     'PRPG_STRT_DTTM'));
   v_tot NUMBER; v_null NUMBER; v_bad NUMBER := 0;
 BEGIN
   DBMS_OUTPUT.PUT_LINE(RPAD('테이블.파티션키', 50) || LPAD('전체',8) || LPAD('NULL',8) || '  판정');
   DBMS_OUTPUT.PUT_LINE(RPAD('-', 80, '-'));
-  FOR i IN 1 .. v.COUNT LOOP
+  -- Tibero 는 PL/SQL RECORD 생성자 t_rec(...) 를 지원하지 않는다 (TBR-15048 확인).
+  -- 목록은 인라인 커서로 만든다.
+  FOR r IN (
+              SELECT 'T_ITSE_AI_DGNST01L'  AS tab, 'STRT_DTTM' AS col FROM DUAL
+    UNION ALL SELECT 'T_ITSE_AI_DRF_DGNST01L',   'AI_DGNST_DTTM'      FROM DUAL
+    UNION ALL SELECT 'T_ITSE_AI_MODL_OP01L',     'MNTG_STRT_DTTM'     FROM DUAL
+    UNION ALL SELECT 'T_ITSE_AI_MVPCT_DGNST01L', 'AI_DGNST_DTTM'      FROM DUAL
+    UNION ALL SELECT 'T_ITSE_ANNT01L',           'INFO_CRET_DTTM'     FROM DUAL
+    UNION ALL SELECT 'T_ITSE_LBLL01L',           'INFO_CRET_DTTM'     FROM DUAL
+    UNION ALL SELECT 'T_ITSE_SNSH_GTHR01L',      'STRT_DTTM'          FROM DUAL
+    UNION ALL SELECT 'T_ITSE_SNSH_PRPG01L',      'PRPG_STRT_DTTM'     FROM DUAL )
+  LOOP
     EXECUTE IMMEDIATE
-      'SELECT COUNT(*), COUNT(*) - COUNT("' || v(i).col || '") FROM "AIMSC_DEV"."' || v(i).tab || '"'
+      'SELECT COUNT(*), COUNT(*) - COUNT("' || r.col || '") FROM "AIMSC_DEV"."' || r.tab || '"'
       INTO v_tot, v_null;
     IF v_null > 0 THEN v_bad := v_bad + 1; END IF;
-    DBMS_OUTPUT.PUT_LINE(RPAD(v(i).tab || '.' || v(i).col, 50)
+    DBMS_OUTPUT.PUT_LINE(RPAD(r.tab || '.' || r.col, 50)
       || LPAD(TO_CHAR(v_tot), 8) || LPAD(TO_CHAR(v_null), 8)
       || CASE WHEN v_null = 0 THEN '  OK' ELSE '  ** NULL 있음 - 이 테이블은 진행 불가 **' END);
   END LOOP;

@@ -243,7 +243,18 @@ DBeaver 덤프의 259개 파일은 **테이블 158개 + 시노님 101개**였다
 | `ALL_VIEWS` | `OWNER, VIEW_NAME, TEXT` | `TEXT_LENGTH` |
 | `ALL_SYNONYMS` | `OWNER, SYNONYM_NAME, ORG_OBJECT_OWNER, ORG_OBJECT_NAME` | `TABLE_OWNER, TABLE_NAME, DB_LINK` |
 | `ALL_DEPENDENCIES` | `OWNER, NAME, TYPE, PARENT_OBJ_OWNER, PARENT_OBJ_NAME, PARENT_OBJ_TYPE` | `REFERENCED_*` |
+| `ALL_TAB_PARTITIONS` | `TABLE_OWNER` 없음 — 파티션 정보는 `ALL_PART_TABLES` 로 본다 | `TABLE_OWNER` |
+| `ALL_TAB_PRIVS` | `TABLE_SCHEMA` 없음 | `TABLE_SCHEMA` |
+| `DBMS_METADATA` | `GET_DDL('PACKAGE',...)` 불가 — 본문은 `ALL_SOURCE` 로 읽는다 | 동작 |
 | 캐릭터셋 | `NLS_LANG_AT_BOOT` — **DB 캐릭터셋이 아니다** | `NLS_CHARACTERSET` |
+
+tbsql / PSM 쪽 차이도 있다.
+
+| 항목 | Tibero |
+|---|---|
+| `SET LONGCHUNKSIZE` | 거부한다 (`TBS-70003`). `SET LONG` 만 쓴다 |
+| PL/SQL RECORD 생성자 | `t_rec(...)` 형태를 지원하지 않는다 (`TBR-15048`). 목록은 인라인 커서(`SELECT ... UNION ALL`)로 만든다 |
+| `EXIT;` | 스크립트 끝에 없으면 `SQL>` 프롬프트에서 멈춘다 |
 
 ### 캐릭터셋 — 초기 판단을 뒤집은 사실
 
