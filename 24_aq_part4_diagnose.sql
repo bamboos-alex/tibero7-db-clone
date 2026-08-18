@@ -1,0 +1,292 @@
+-- ============================================================================
+--  AQ 앱 테이블 — Part 4. AI 진단
+--  대상: 121.137.106.217:58629 / TAIMS / AIMS_DEV   (원천 공동작업 DB)
+-- ============================================================================
+--
+--  담당 모듈: AQ4 — 모델 조회 / AI 진단 결과 요약 / 영상품질·문안 진단 내역 저장
+--  테이블   : T_ITSE_AI_MODL01M · T_ITSE_AI_DGNST01L · T_ITSE_AI_MVPCT_DGNST01L · T_ITSE_AI_DRF_DGNST01L
+--
+--  구성
+--    [1] DDL          2026-08-18 원천에 이미 적용했다. 재현·검토용이다.
+--    [2] 샘플 데이터   앱 연동 시험용. 실행 여부는 선택이다.
+--    [3] 확인
+--    [4] 정리(삭제)
+--
+--  ** 여러 사람이 함께 쓰는 DB 다. **
+--  샘플 데이터의 업무 ID 는 전부 'SEED-' 로 시작한다. [4] 로 깨끗이 지울 수 있다.
+--  파티션 키 값은 SYSDATE 를 쓰므로 2026-08 파티션(P202608)에 들어간다.
+--
+--  Part 1(장비) 과 Part 3(데이터셋) 을 먼저 실행해야 한다.
+--  모델은 데이터셋을, 진단 내역은 장비와 진단 요약을 참조한다.
+--
+--  적재 순서: 모델 -> 진단 요약 -> 진단 내역(영상품질 / 문안)
+-- ============================================================================
+
+
+-- ############################################################################
+-- ## [1] DDL — 이미 적용됨. 다시 실행하면 "이미 있음" 오류가 난다
+-- ############################################################################
+
+-- ---- T_ITSE_AI_MODL01M ---------------------------------------
+CREATE TABLE AIMS_DEV.T_ITSE_AI_MODL01M
+(
+    "AI_MODL_ID"                 VARCHAR2(36)   NOT NULL,
+    "AI_MODL_NM"                 VARCHAR2(200),
+    "AI_MODL_VRSN_NM"            VARCHAR2(100),
+    "AI_MODL_STAT_CD"            VARCHAR2(2),
+    "AI_MODL_USE_OBJTV_CTNT"     VARCHAR2(1000),
+    "AI_MODL_FLNM"               VARCHAR2(300),
+    "DATST_ID"                   VARCHAR2(36)   NOT NULL,
+    "EXPRM_ID"                   VARCHAR2(36),
+    "TRNG_STRT_DTTM"             DATE,
+    "TRNG_END_DTTM"              DATE,
+    "BTCH_SIZE_VAL"              NUMBER(10,0),
+    "STUD_RT"                    NUMBER(5,2),
+    "EPCH_CNT"                   NUMBER(10,0),
+    "MODL_USE_STRT_DTTM"         DATE,
+    "TRNG_STUP_CTNT"             VARCHAR2(4000),
+    "AI_DGNST_TYPE_CD"           VARCHAR2(2),
+    "TRNG_ACRC_RT"               NUMBER(5,2),
+    "PSNT_AI_ACRC_RT"            NUMBER(5,2),
+    "ACTN_MESR_CTNT"             VARCHAR2(1000)
+)
+TABLESPACE TS_AIMS_DATA;
+
+CREATE UNIQUE INDEX AIMS_DEV."PK_T_ITSE_AI_MODL01M" ON AIMS_DEV.T_ITSE_AI_MODL01M ("AI_MODL_ID")
+    TABLESPACE TS_AIMS_DATA;
+
+ALTER TABLE AIMS_DEV.T_ITSE_AI_MODL01M ADD CONSTRAINT "PK_T_ITSE_AI_MODL01M" PRIMARY KEY ("AI_MODL_ID");
+
+-- ---- T_ITSE_AI_DGNST01L --------------------------------------
+CREATE TABLE AIMS_DEV.T_ITSE_AI_DGNST01L
+(
+    "AI_DGNST_ID"                VARCHAR2(36)   NOT NULL,
+    "STRT_DTTM"                  DATE           NOT NULL,
+    "END_DTTM"                   DATE           NOT NULL,
+    "AI_DGNST_RSLT_CD"           VARCHAR2(2)    NOT NULL,
+    "FILE_PATH"                  VARCHAR2(2000) NOT NULL
+)
+TABLESPACE TS_AIMS_HIST_DATA
+PARTITION BY RANGE("STRT_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE TS_AIMS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE TS_AIMS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE TS_AIMS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX AIMS_DEV."PK_T_ITSE_AI_DGNST01L" ON AIMS_DEV.T_ITSE_AI_DGNST01L ("AI_DGNST_ID", "STRT_DTTM")
+    TABLESPACE TS_AIMS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE TS_AIMS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE TS_AIMS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE TS_AIMS_HIST_IDX
+);
+
+ALTER TABLE AIMS_DEV.T_ITSE_AI_DGNST01L ADD CONSTRAINT "PK_T_ITSE_AI_DGNST01L" PRIMARY KEY ("AI_DGNST_ID", "STRT_DTTM");
+
+-- ---- T_ITSE_AI_MVPCT_DGNST01L --------------------------------
+CREATE TABLE AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L
+(
+    "AI_MVPCT_DGNST_ID"          VARCHAR2(36)   NOT NULL,
+    "AI_DGNST_DTTM"              DATE           NOT NULL,
+    "JDG_NRML_YN"                VARCHAR2(1),
+    "MVPCT_ERR_CTNT"             VARCHAR2(1000),
+    "AI_DGNST_ID"                VARCHAR2(36)   NOT NULL,
+    "CCTV_ID"                    VARCHAR2(12)   NOT NULL,
+    "DGNST_RSLT_FILE_PATH"       VARCHAR2(2000) NOT NULL,
+    "DGNST_TRGT_IMG_FILE_PATH"   VARCHAR2(2000) NOT NULL,
+    "DGNST_RLBLT_RT"             NUMBER(5,2)    NOT NULL,
+    "EXMN_YN"                    CHAR(1)        NOT NULL,
+    "FLPS_YN"                    VARCHAR2(1)
+)
+TABLESPACE TS_AIMS_HIST_DATA
+PARTITION BY RANGE("AI_DGNST_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE TS_AIMS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE TS_AIMS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE TS_AIMS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX AIMS_DEV."PK_T_ITSE_AI_MVPCT_DGNST01L" ON AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L ("AI_MVPCT_DGNST_ID", "AI_DGNST_DTTM")
+    TABLESPACE TS_AIMS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE TS_AIMS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE TS_AIMS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE TS_AIMS_HIST_IDX
+);
+
+ALTER TABLE AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L ADD CONSTRAINT "PK_T_ITSE_AI_MVPCT_DGNST01L" PRIMARY KEY ("AI_MVPCT_DGNST_ID", "AI_DGNST_DTTM");
+
+-- ---- T_ITSE_AI_DRF_DGNST01L ----------------------------------
+CREATE TABLE AIMS_DEV.T_ITSE_AI_DRF_DGNST01L
+(
+    "AI_DRF_DGNST_ID"            VARCHAR2(36)   NOT NULL,
+    "AI_DGNST_DTTM"              DATE           NOT NULL,
+    "JDG_NRML_YN"                VARCHAR2(1),
+    "DRF_ERR_CTNT"               VARCHAR2(1000),
+    "AI_DGNST_ID"                VARCHAR2(36)   NOT NULL,
+    "CCTV_ID"                    VARCHAR2(12)   NOT NULL,
+    "DGNST_RSLT_FILE_PATH"       VARCHAR2(2000) NOT NULL,
+    "DGNST_TRGT_IMG_FILE_PATH"   VARCHAR2(2000) NOT NULL,
+    "DGNST_RLBLT_RT"             NUMBER(5,2)    NOT NULL,
+    "EXMN_YN"                    CHAR(1)        NOT NULL,
+    "FLPS_YN"                    VARCHAR2(1)
+)
+TABLESPACE TS_AIMS_HIST_DATA
+PARTITION BY RANGE("AI_DGNST_DTTM")
+(
+    PARTITION "P202608" VALUES LESS THAN (TO_DATE('20260901','YYYYMMDD')) TABLESPACE TS_AIMS_HIST_DATA,
+    PARTITION "P202609" VALUES LESS THAN (TO_DATE('20261001','YYYYMMDD')) TABLESPACE TS_AIMS_HIST_DATA,
+    PARTITION "PMAX" VALUES LESS THAN (MAXVALUE) TABLESPACE TS_AIMS_HIST_DATA
+);
+
+CREATE UNIQUE INDEX AIMS_DEV."PK_T_ITSE_AI_DRF_DGNST01L" ON AIMS_DEV.T_ITSE_AI_DRF_DGNST01L ("AI_DRF_DGNST_ID", "AI_DGNST_DTTM")
+    TABLESPACE TS_AIMS_HIST_IDX LOCAL
+(
+    PARTITION "P202608" TABLESPACE TS_AIMS_HIST_IDX,
+    PARTITION "P202609" TABLESPACE TS_AIMS_HIST_IDX,
+    PARTITION "PMAX" TABLESPACE TS_AIMS_HIST_IDX
+);
+
+ALTER TABLE AIMS_DEV.T_ITSE_AI_DRF_DGNST01L ADD CONSTRAINT "PK_T_ITSE_AI_DRF_DGNST01L" PRIMARY KEY ("AI_DRF_DGNST_ID", "AI_DGNST_DTTM");
+
+
+-- ############################################################################
+-- ## [2] 샘플 데이터   ** Part 1, Part 3 을 먼저 실행할 것 **
+-- ############################################################################
+
+-- ---- 2-1. 모델 2건 (영상품질 진단용 / 문안 진단용) --------------------------
+INSERT INTO AIMS_DEV.T_ITSE_AI_MODL01M
+  (AI_MODL_ID, AI_MODL_NM, AI_MODL_VRSN_NM, AI_MODL_STAT_CD, AI_MODL_USE_OBJTV_CTNT,
+   AI_MODL_FLNM, DATST_ID, EXPRM_ID, TRNG_STRT_DTTM, TRNG_END_DTTM,
+   BTCH_SIZE_VAL, STUD_RT, EPCH_CNT, MODL_USE_STRT_DTTM, TRNG_STUP_CTNT,
+   AI_DGNST_TYPE_CD, TRNG_ACRC_RT, PSNT_AI_ACRC_RT, ACTN_MESR_CTNT)
+VALUES
+  ('SEED-MODL-001', 'CCTV 영상품질 진단 모델', 'v1.0.0', '01', 'CCTV 화면의 흐림·노이즈·색상이상 판별',
+   'mvpct_v100.pt', 'SEED-DATST-001', 'SEED-EXPRM-001', SYSDATE - 7, SYSDATE - 5,
+   32, 0.01, 100, SYSDATE - 4, 'optimizer=adam, loss=crossentropy',
+   '01', 96.50, 94.20, '정확도 90% 미만이면 재학습');
+
+INSERT INTO AIMS_DEV.T_ITSE_AI_MODL01M
+  (AI_MODL_ID, AI_MODL_NM, AI_MODL_VRSN_NM, AI_MODL_STAT_CD, AI_MODL_USE_OBJTV_CTNT,
+   AI_MODL_FLNM, DATST_ID, EXPRM_ID, TRNG_STRT_DTTM, TRNG_END_DTTM,
+   BTCH_SIZE_VAL, STUD_RT, EPCH_CNT, MODL_USE_STRT_DTTM, TRNG_STUP_CTNT,
+   AI_DGNST_TYPE_CD, TRNG_ACRC_RT, PSNT_AI_ACRC_RT, ACTN_MESR_CTNT)
+VALUES
+  ('SEED-MODL-002', 'VMS 문안 진단 모델', 'v1.0.0', '01', 'VMS 표출 문안의 오탈자·표출오류 판별',
+   'drf_v100.pt', 'SEED-DATST-001', 'SEED-EXPRM-002', SYSDATE - 6, SYSDATE - 4,
+   16, 0.005, 80, SYSDATE - 3, 'optimizer=sgd, loss=ctc',
+   '02', 93.10, 91.80, '정확도 90% 미만이면 재학습');
+
+COMMIT;
+
+-- ---- 2-2. 진단 요약 2건 -----------------------------------------------------
+-- STRT_DTTM 이 파티션 키다.
+INSERT INTO AIMS_DEV.T_ITSE_AI_DGNST01L
+  (AI_DGNST_ID, STRT_DTTM, END_DTTM, AI_DGNST_RSLT_CD, FILE_PATH)
+VALUES ('SEED-DGNST-001', SYSDATE - 2/24, SYSDATE - 2/24 + 180/86400, '01',
+        '/data/aq/diagnose/20260818/mvpct');
+
+INSERT INTO AIMS_DEV.T_ITSE_AI_DGNST01L
+  (AI_DGNST_ID, STRT_DTTM, END_DTTM, AI_DGNST_RSLT_CD, FILE_PATH)
+VALUES ('SEED-DGNST-002', SYSDATE - 1/24, SYSDATE - 1/24 + 150/86400, '01',
+        '/data/aq/diagnose/20260818/drf');
+
+COMMIT;
+
+-- ---- 2-3. 영상품질 진단 내역 3건 --------------------------------------------
+-- AI_DGNST_DTTM 이 파티션 키다. CCTV_ID 는 Part 1 에서 넣은 실제 장비를 쓴다.
+-- 정상 1건 / 이상 2건.
+INSERT INTO AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L
+  (AI_MVPCT_DGNST_ID, AI_DGNST_DTTM, JDG_NRML_YN, MVPCT_ERR_CTNT, AI_DGNST_ID,
+   CCTV_ID, DGNST_RSLT_FILE_PATH, DGNST_TRGT_IMG_FILE_PATH,
+   DGNST_RLBLT_RT, EXMN_YN, FLPS_YN)
+SELECT 'SEED-MVPCT-001', SYSDATE, 'Y', NULL, 'SEED-DGNST-001',
+       MIN(CCTV_ID), '/data/aq/diagnose/20260818/mvpct/001.json',
+       '/data/aq/snapshot/20260818/001/frame_0001.jpg', 98.70, 'N', 'N'
+  FROM AIMS_DEV.T_ITSE_AI_CCTV01M;
+
+INSERT INTO AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L
+  (AI_MVPCT_DGNST_ID, AI_DGNST_DTTM, JDG_NRML_YN, MVPCT_ERR_CTNT, AI_DGNST_ID,
+   CCTV_ID, DGNST_RSLT_FILE_PATH, DGNST_TRGT_IMG_FILE_PATH,
+   DGNST_RLBLT_RT, EXMN_YN, FLPS_YN)
+SELECT 'SEED-MVPCT-002', SYSDATE, 'N', '화면 흐림 (blur score 0.82)', 'SEED-DGNST-001',
+       MIN(CCTV_ID), '/data/aq/diagnose/20260818/mvpct/002.json',
+       '/data/aq/snapshot/20260818/002/frame_0001.jpg', 91.30, 'N', 'N'
+  FROM AIMS_DEV.T_ITSE_AI_CCTV01M;
+
+INSERT INTO AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L
+  (AI_MVPCT_DGNST_ID, AI_DGNST_DTTM, JDG_NRML_YN, MVPCT_ERR_CTNT, AI_DGNST_ID,
+   CCTV_ID, DGNST_RSLT_FILE_PATH, DGNST_TRGT_IMG_FILE_PATH,
+   DGNST_RLBLT_RT, EXMN_YN, FLPS_YN)
+SELECT 'SEED-MVPCT-003', SYSDATE, 'N', '색상 이상 (채도 저하)', 'SEED-DGNST-001',
+       MAX(CCTV_ID), '/data/aq/diagnose/20260818/mvpct/003.json',
+       '/data/aq/snapshot/20260818/003/frame_0001.jpg', 87.40, 'Y', 'Y'
+  FROM AIMS_DEV.T_ITSE_AI_CCTV01M;
+
+COMMIT;
+
+-- ---- 2-4. 문안 진단 내역 2건 ------------------------------------------------
+INSERT INTO AIMS_DEV.T_ITSE_AI_DRF_DGNST01L
+  (AI_DRF_DGNST_ID, AI_DGNST_DTTM, JDG_NRML_YN, DRF_ERR_CTNT, AI_DGNST_ID,
+   CCTV_ID, DGNST_RSLT_FILE_PATH, DGNST_TRGT_IMG_FILE_PATH,
+   DGNST_RLBLT_RT, EXMN_YN, FLPS_YN)
+SELECT 'SEED-DRF-001', SYSDATE, 'Y', NULL, 'SEED-DGNST-002',
+       MIN(CCTV_ID), '/data/aq/diagnose/20260818/drf/001.json',
+       '/data/aq/snapshot/20260818/001/vms_0001.jpg', 95.20, 'N', 'N'
+  FROM AIMS_DEV.T_ITSE_AI_CCTV01M;
+
+INSERT INTO AIMS_DEV.T_ITSE_AI_DRF_DGNST01L
+  (AI_DRF_DGNST_ID, AI_DGNST_DTTM, JDG_NRML_YN, DRF_ERR_CTNT, AI_DGNST_ID,
+   CCTV_ID, DGNST_RSLT_FILE_PATH, DGNST_TRGT_IMG_FILE_PATH,
+   DGNST_RLBLT_RT, EXMN_YN, FLPS_YN)
+SELECT 'SEED-DRF-002', SYSDATE, 'N', '문안 일부 미표출 (우측 2자)', 'SEED-DGNST-002',
+       MAX(CCTV_ID), '/data/aq/diagnose/20260818/drf/002.json',
+       '/data/aq/snapshot/20260818/002/vms_0001.jpg', 88.90, 'N', 'N'
+  FROM AIMS_DEV.T_ITSE_AI_CCTV01M;
+
+COMMIT;
+
+
+-- ############################################################################
+-- ## [3] 확인
+-- ############################################################################
+
+SELECT 'AI_MODL01M' AS tab, COUNT(*) AS rows_cnt FROM AIMS_DEV.T_ITSE_AI_MODL01M
+UNION ALL
+SELECT 'AI_DGNST01L',       COUNT(*) FROM AIMS_DEV.T_ITSE_AI_DGNST01L
+UNION ALL
+SELECT 'AI_MVPCT_DGNST01L', COUNT(*) FROM AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L
+UNION ALL
+SELECT 'AI_DRF_DGNST01L',   COUNT(*) FROM AIMS_DEV.T_ITSE_AI_DRF_DGNST01L;
+
+-- AQ5 가 쓰는 조회 모양 — 이상 판정 건에 본사·지사를 붙인다
+SELECT m.AI_MVPCT_DGNST_ID, m.CCTV_ID, m.JDG_NRML_YN, m.MVPCT_ERR_CTNT,
+       m.DGNST_RLBLT_RT, m.EXMN_YN, m.FLPS_YN, h.HDQR_NM, n.MTNOF_NM
+  FROM AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L m,
+       AIMS_DEV.T_ITSE_AI_CCTV01M        a,
+       AIMS_DEV.T_ITSE_HDQR_01M          h,
+       AIMS_DEV.T_ITSE_MTNOF_01M         n
+ WHERE m.CCTV_ID = a.CCTV_ID
+   AND a.HDQR_ID = h.HDQR_ID
+   AND a.MTNOF_ID = n.MTNOF_ID
+   AND m.JDG_NRML_YN = 'N'
+ ORDER BY m.AI_MVPCT_DGNST_ID;
+
+-- 파티션 배치 (전부 P202608 이어야 한다)
+SELECT 'MVPCT P202608' AS part, COUNT(*) AS rows_cnt
+  FROM AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L PARTITION (P202608)
+UNION ALL
+SELECT 'MVPCT PMAX', COUNT(*)
+  FROM AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L PARTITION (PMAX);
+
+
+-- ############################################################################
+-- ## [4] 정리
+-- ############################################################################
+
+-- DELETE FROM AIMS_DEV.T_ITSE_AI_DRF_DGNST01L   WHERE AI_DRF_DGNST_ID   LIKE 'SEED-%';
+-- DELETE FROM AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L WHERE AI_MVPCT_DGNST_ID LIKE 'SEED-%';
+-- DELETE FROM AIMS_DEV.T_ITSE_AI_DGNST01L       WHERE AI_DGNST_ID       LIKE 'SEED-%';
+-- DELETE FROM AIMS_DEV.T_ITSE_AI_MODL01M        WHERE AI_MODL_ID        LIKE 'SEED-%';
+-- COMMIT;

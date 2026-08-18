@@ -62,6 +62,21 @@
 > 남은 것: `AIMS_DEV.T_ITSE_AI_MVPCT_DGNST01L` 이 중복으로 남아 있다
 > (`12_create_ai_mvpct_dgnst01l.sql` 산물). 앱은 `AIMSC_DEV` 를 쓰므로 정리 대상.
 
+> ## ✅ 원천 DB 에 AQ 테이블 이식 (2026-08-18)
+>
+> UT 에서 확정한 구성을 **원천 공동작업 DB**(`121.137.106.217:58629`)의
+> **`AIMS_DEV`** 에 만들었다. UT 와 스키마가 다르다 — 앱이 `aims_dev` 로 붙기 때문이다.
+>
+> | 항목 | 결과 |
+> |---|---|
+> | 마스터 `_01M` | 4개 신규 생성 (`TS_AIMS_DATA`) |
+> | 이력 `_01L` | 8개 신규 생성 — 월별 파티션 + 로컬 유니크 인덱스 |
+> | 시노님 | **만들지 않음** — `CCTV`/본사/지사 셋 다 `AIMS_DEV` 에 이미 있었다 |
+> | 사전 실측 | 12개 이름 모두 미사용. 테이블스페이스 4개 존재(DATA·HIST_DATA 각 20GB) |
+>
+> `DROP` 없이 순수 추가만 했다. 공동 DB 라 이름 충돌·시노님 존재·테이블스페이스를
+> 먼저 실측하고 진행했다.
+
 공동 작업용 Tibero DB(`121.137.106.217:58629/TAIMS`)의 `AIMS_EX` / `AIMS_DEV` / `AIMSC_DEV` 스키마를
 사내 서버의 **docker `tibero7_ut`** 인스턴스로 복제한다.
 
@@ -162,6 +177,47 @@ AIMS_EX.T_TIPG_TBSP_STAT_01L    ->  AIMS_EX.T_ITSE_TBSP_STAT_01L
 | `aims_dev` 로 접속 시 `AIMSC_DEV` 안 보임 | 소스는 세 계정 모두 `DBA` 인데 `04b` 가 `CONNECT`/`RESOURCE` 만 부여 | `GRANT DBA` 추가 (아래) |
 
 
+## AQ 앱 테이블 — 파트별 SQL
+
+AI 영상품질진단 앱이 쓰는 12개 테이블을 **파이프라인 단계별로** 나눴다.
+각 파일이 `[1] DDL` `[2] 샘플 데이터` `[3] 확인` `[4] 정리` 로 자족적이다.
+
+| 파일 | 단계 | 모듈 | 테이블 |
+|---|---|---|---|
+| `21_aq_part1_gather.sql` | 수집 | AQ1 | `AI_CCTV01M` · `SNSH_STUP01M` · `SNSH_GTHR01L` |
+| `22_aq_part2_preprocess.sql` | 전처리·라벨링·어노테이션 | AQ2 | `SNSH_PRPG01L` · `LBLL01L` · `ANNT01L` |
+| `23_aq_part3_dataset.sql` | 데이터셋 | AQ3 | `DATST01M` |
+| `24_aq_part4_diagnose.sql` | AI 진단 | AQ4 | `AI_MODL01M` · `AI_DGNST01L` · `AI_MVPCT_DGNST01L` · `AI_DRF_DGNST01L` |
+| `25_aq_part5_modelops.sql` | 모델 운영·API | AQ5/AQ6 | `AI_MODL_OP01L` |
+
+**순서대로 실행해야 한다.** FK 는 없지만 뒤 단계가 앞 단계의 ID 를 참조한다.
+Part 4 는 Part 1(장비)과 Part 3(데이터셋)을, Part 5 는 Part 3·4 를 전제한다.
+
+### 샘플 데이터 설계
+
+공동 DB 에 넣는 것이라 **되돌릴 수 있게** 만들었다.
+
+- 업무 ID 를 전부 `SEED-` 로 시작하게 해 `[4]` 로 한 줄씩 지울 수 있다
+- 장비 정보는 지어내지 않고 `AIMS_EX.T_ITSE_CCTV_01M` 에서 실제 5대를 골라 넣는다
+  (`USE_YN='Y'` 이고 RTSP URL 이 있는 것). 그래서 본사·지사 조인이 실제로 성립한다
+- 파티션 키 값은 `SYSDATE` 라 `P202608` 에 들어간다
+- 각 파트의 `[3]` 에 **앱이 실제로 쓸 조회 모양**을 넣었다 — 이상 판정 건에
+  본사·지사를 붙이는 질의, 활성 모니터링 건에 모델 정확도를 붙이는 질의
+
+`T_ITSE_AI_CCTV01M` 만 예외다. PK 가 실제 `CCTV_ID` 라 접두사를 못 붙여,
+정리는 `INFO_CRET_DTTM` 으로 한다.
+
+### 이 테이블들을 다룰 때 알아야 할 것 둘
+
+**이력 8개의 PK 는 `(업무ID, 파티션키)` 복합키다.** 로컬 유니크 인덱스가
+파티션 키를 반드시 포함해야 해서 생긴 제약이다. 업무 ID 단독 유일성은 DB 가
+보장하지 않는다.
+
+**파티션 키 컬럼은 `NOT NULL` 이다.** 앱이 `NULL` 을 넣으면 `INSERT` 가 실패한다.
+특히 `T_ITSE_AI_MODL_OP01L.MNTG_STRT_DTTM` — 모니터링 시작 전에 행을 먼저
+등록하는 흐름이면 파티션 버전을 쓸 수 없다. `18_aq_tables_dbeaver.sql` 맨 아래에
+파티션 없는 대안을 넣어 두었다.
+
 ## 왜 기존 덤프를 쓰지 않는가
 
 `/Users/alex/aims_ut_db_20260810/{AIMS_DEV,AIMSC_DEV}` 의 DBeaver 덤프(2.4GB)는 이관 소스로 쓸 수 없다.
@@ -207,6 +263,7 @@ AIMS_EX.T_TIPG_TBSP_STAT_01L    ->  AIMS_EX.T_ITSE_TBSP_STAT_01L
 | `17_aq_tables_ddl.sql` | 이식 | AQ 앱 테이블 15개 생성 DDL — 다른 DB 로 옮길 때 쓴다 **(변경 발생)** |
 | `18_aq_tables_dbeaver.sql` | 이식 | 같은 DDL 의 **DBeaver 실행용** 순수 SQL 판 — 블록별로 골라 실행 **(변경 발생)** |
 | `19_aq_verify_dbeaver.sql` | 이식 | 18 실행 결과 확인 — 요약 1개 + 상세 8개 (읽기 전용) |
+| `21`~`25_aq_part*.sql` | 이식 | **파트별 SQL** — 파이프라인 단계마다 DDL + 샘플 데이터 + 확인 + 정리 |
 
 ## 파일 동기화
 
