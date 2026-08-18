@@ -170,6 +170,10 @@ AIMS_EX.T_TIPG_TBSP_STAT_01L    ->  AIMS_EX.T_ITSE_TBSP_STAT_01L
 | `01b`/`01c` | Phase 0 | 이관 범위·시노님 대상 스키마 확정 (읽기 전용) |
 | `12_create_ai_mvpct_dgnst01l.sql` | 신규 | AI 영상화질 진단 이력 테이블 생성 — 파티션 + 로컬 인덱스 **(변경 발생)** |
 | `13_target_survey.sql` | 신규 | AIMSC_DEV 신규 테이블 15개 현재 상태 실측 (읽기 전용) |
+| `13b_hist_detail.sql` | 신규 | 이력 테이블 PK 구성·파티션 키 NULL·원본 DDL 실측 (읽기 전용) |
+| `14_aimsc_precheck.sql` | 신규 | 재구축 전 안전 점검 — FK·의존객체·권한·NULL (읽기 전용) |
+| `15_aimsc_hist_rebuild.sql` | 신규 | 이력 8개 파티션+로컬인덱스 재구축 **(변경 발생)** |
+| `16_aimsc_synonym.sql` | 신규 | AIMSC_DEV 에 T_ITSE_CCTV_01M 시노님 추가 **(변경 발생)** |
 
 ## 파일 동기화
 
