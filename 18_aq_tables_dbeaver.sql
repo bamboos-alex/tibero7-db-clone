@@ -18,12 +18,26 @@
 --
 --  1) 이름이 이미 쓰이고 있는가 — 나오는 것은 만들지 말 것
 --
---     SELECT owner, object_name, object_type, status FROM all_objects
---      WHERE object_name LIKE 'T_ITSE_SNSH%'  OR object_name LIKE 'T_ITSE_AI_%'
---         OR object_name IN ('T_ITSE_LBLL01L','T_ITSE_ANNT01L','T_ITSE_DATST01M')
+--     LIKE 로 훑으면 안 된다. 원천 AIMS_DEV 에는 T_ITSE_AI_BRDW_*,
+--     T_ITSE_AI_FETR_ANLY01L, T_ITSE_AI_INFER_JOB01L 등 무관한 AI 테이블이
+--     이미 많고, TABLE PARTITION 행까지 섞여 결과를 못 읽는다. 이름을 정확히
+--     찍고 파티션 행은 제외한다.
+--
+--     SELECT object_name, owner, object_type, status
+--       FROM all_objects
+--      WHERE object_type <> 'TABLE PARTITION'
+--        AND object_name IN (
+--            'T_ITSE_AI_CCTV01M','T_ITSE_AI_MODL01M','T_ITSE_DATST01M',
+--            'T_ITSE_SNSH_STUP01M','T_ITSE_SNSH_GTHR01L','T_ITSE_SNSH_PRPG01L',
+--            'T_ITSE_LBLL01L','T_ITSE_ANNT01L','T_ITSE_AI_DGNST01L',
+--            'T_ITSE_AI_MVPCT_DGNST01L','T_ITSE_AI_DRF_DGNST01L',
+--            'T_ITSE_AI_MODL_OP01L',
+--            'T_ITSE_CCTV_01M','T_ITSE_HDQR_01M','T_ITSE_MTNOF_01M')
 --      ORDER BY object_name, owner;
 --
 --  2) 테이블스페이스가 있는가 — 넷 다 나와야 한다
+--     (2026-08-18 원천 실측: DATA 20GB / HIST_DATA 20GB / HIST_IDX 10GB / IDX 10GB.
+--      UT 보다 훨씬 크다. 용량은 문제되지 않는다)
 --
 --     SELECT tablespace_name, ROUND(SUM(bytes)/1024/1024) mb FROM dba_data_files
 --      WHERE tablespace_name IN ('TS_AIMS_DATA','TS_AIMS_IDX',
