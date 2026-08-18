@@ -6,6 +6,11 @@
 --
 --  ** 여러 사람이 함께 쓰는 DB 다. 필요한 블록만 골라서 실행할 것. **
 --
+--  2026-08-18 원천 실측으로 확정된 실행 범위:
+--    실행할 것    마스터 4개 + 이력 8개 + CCTV 시노님 1개 = 13블록 (전부 신규)
+--    건너뛸 것    HDQR / MTNOF 시노님 — AIMSC_DEV 에 이미 있다
+--    테이블스페이스 넷 다 존재 (DATA 20GB / HIST_DATA 20GB / HIST_IDX 10GB / IDX 10GB)
+--
 --  이 파일에는 DROP 이 한 줄도 없다. 순수 추가만 한다.
 --  각 블록은 독립적이다 — FK 가 없어 생성 순서에 제약이 없다.
 --  다만 시노님 3개는 AIMS_EX 에 대상 테이블이 있어야 한다.
@@ -429,11 +434,16 @@ ALTER TABLE AIMSC_DEV.T_ITSE_AI_MODL_OP01L ADD CONSTRAINT "PK_T_ITSE_AI_MODL_OP0
 -- CCTV / 본사 / 지사 원장은 AIMS_EX 에 하나만 있어야 한다. 같은 이름의
 -- 실테이블을 만들면 원장이 둘이 되어 동기화 문제가 생긴다.
 -- 이 DB 의 기존 시노님 100여 개가 전부 같은 방식이다.
--- 이미 있으면 만들지 말 것.
+--
+-- 2026-08-18 원천 실측 결과 HDQR / MTNOF 는 AIMSC_DEV 에 이미 있고 CCTV 만
+-- 빠져 있다. 그래서 아래 한 줄만 실행하면 된다.
+-- (UT 에서 본 것과 정확히 같은 모양이었다)
 
 CREATE SYNONYM AIMSC_DEV.T_ITSE_CCTV_01M FOR AIMS_EX.T_ITSE_CCTV_01M;
-CREATE SYNONYM AIMSC_DEV.T_ITSE_HDQR_01M FOR AIMS_EX.T_ITSE_HDQR_01M;
-CREATE SYNONYM AIMSC_DEV.T_ITSE_MTNOF_01M FOR AIMS_EX.T_ITSE_MTNOF_01M;
+
+-- 아래 둘은 이미 존재한다. 실행하면 "이미 있음" 오류가 난다.
+-- CREATE SYNONYM AIMSC_DEV.T_ITSE_HDQR_01M FOR AIMS_EX.T_ITSE_HDQR_01M;
+-- CREATE SYNONYM AIMSC_DEV.T_ITSE_MTNOF_01M FOR AIMS_EX.T_ITSE_MTNOF_01M;
 
 
 -- ==========================================================================
