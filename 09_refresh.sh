@@ -119,6 +119,21 @@ mask_stream() { # 표준입력 마스킹
   if [ -n "$expr" ]; then sed "${expr#;}"; else cat; fi
 }
 
+# 한 행·한 컬럼을 돌려주는 조회. 읽기 전용이라 DRYRUN 과 무관하게 실행한다
+#   — 상태를 보려고 부르는 것까지 막으면 DRYRUN 이 판단에 도움이 되지 않는다.
+# 배너·프롬프트가 섞여 나오므로 값을 << >> 로 감싸 뽑는다.
+sql1() {  # $1 = 값 식, $2 = FROM 뒤쪽
+  docker exec -i "$CONTAINER" bash -lc "tbsql -s $TGT_USER/$TGT_PASS@TAIMS" 2>/dev/null <<SQL | sed -n 's/.*<<\(.*\)>>.*/\1/p' | head -1
+SET HEADING OFF
+SET FEEDBACK OFF
+SELECT '<<' || TO_CHAR($1) || '>>' FROM $2;
+EXIT;
+SQL
+}
+
+# SCHEMAS 를 SQL IN 목록으로 ('AIMS_EX','AIMS_DEV',...)
+schema_in_list() { echo "$SCHEMAS" | tr ' ' '\n' | awk 'NF{printf "%s'\''%s'\''", (n++?",":""), $0}'; }
+
 runc() {  # 컨테이너에서 실행
   if [ "$DRYRUN" = "1" ]; then echo "  \$ $(mask "$1")"; return 0; fi
   docker exec "$CONTAINER" bash -lc "$1" | mask_stream
@@ -163,6 +178,32 @@ preflight() {
     info "소스 도달 확인"
   fi
 
+  # ---- 대상 스키마에 붙어 있는 세션 ----
+  # 세션이 있으면 DROP USER 가 TBR-7165(Unable to drop a user that is currently
+  # connected) 로 실패한다. 1) 의 WHENEVER SQLERROR CONTINUE 가 그 실패를 삼키므로
+  # 비워지지 않은 스키마에 적재가 일어나고, 이미 있는 객체는 TBR-7102 로 건너뛰어
+  # **옛 데이터가 그대로 남는다.** 2026-09-08 에 실제로 이렇게 됐다 (AIMS_DEV 214개 중
+  # 20개만 적재). 15분을 버리고 대조 단계에서 알게 되는 대신 여기서 끊는다.
+  local busy
+  busy="$(sql1 "COUNT(*)" "V\$SESSION WHERE USERNAME IN ($(schema_in_list))")"
+  if [ "${busy:-0}" != "0" ]; then
+    info "** 대상 스키마에 세션 ${busy}개가 붙어 있습니다 **"
+    docker exec -i "$CONTAINER" bash -lc "tbsql -s $TGT_USER/$TGT_PASS@TAIMS" 2>/dev/null <<SQL | grep -E "^[A-Z]" | sed 's/^/      /'
+SET LINESIZE 200
+SELECT USERNAME, SID, PROG_NAME, MACHINE, OSUSER FROM V\$SESSION
+ WHERE USERNAME IN ($(schema_in_list)) ORDER BY USERNAME, SID;
+EXIT;
+SQL
+    if [ "$DRYRUN" = "1" ]; then
+      info "(DRYRUN 이라 계속합니다. 실제 실행 전에 반드시 정리하세요)"
+    else
+      die "대상 스키마에 접속 중인 세션이 있습니다. DROP USER 가 실패합니다.
+       앱을 내린 뒤 다시 실행하세요. 세션이 사라졌는지는 이 스크립트를 다시 돌리면 확인됩니다."
+    fi
+  else
+    info "대상 스키마에 붙은 세션 없음"
+  fi
+
   runc "df -h $WORKDIR | tail -1"
 
   hr "계획"
@@ -195,6 +236,28 @@ GRANT UNLIMITED TABLESPACE TO $s;
 GRANT DBA TO $s;
 EXIT;
 SQL
+  done
+}
+
+# ---------------------------------------------------------
+# 1b) 초기화 검증 — 비었는지 눈으로 확인하지 말고 세어서 확인한다
+#     DROP USER 가 실패해도 WHENEVER SQLERROR CONTINUE 때문에 1) 은 조용히 끝난다.
+#     여기서 막지 않으면 오염된 스키마에 적재가 이어진다.
+# ---------------------------------------------------------
+verify_reset() {
+  hr "1b) 초기화 검증"
+  if [ "$DRYRUN" = "1" ]; then
+    info "(DRYRUN — 초기화를 하지 않았으므로 건너뜁니다)"
+    return 0
+  fi
+  for s in $SCHEMAS; do
+    local n
+    n="$(sql1 "COUNT(*)" "ALL_OBJECTS WHERE OWNER='$s'")"
+    [ -n "$n" ] || die "$s 의 객체 수를 읽지 못했습니다. 수동 확인이 필요합니다."
+    [ "$n" = "0" ] || die "$s 가 비어 있지 않습니다 (객체 ${n}개).
+       DROP USER 가 실패했습니다. 위 1) 출력에서 TBR-7165(접속 중) 를 확인하세요.
+       이대로 적재하면 이미 있는 객체가 TBR-7102 로 건너뛰어 옛 데이터가 남습니다."
+    info "$s 비어 있음 확인"
   done
 }
 
@@ -290,6 +353,7 @@ main() {
   fi
 
   reset_schemas
+  verify_reset
   do_export
   do_import
   do_recompile
