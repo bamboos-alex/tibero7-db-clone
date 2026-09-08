@@ -279,6 +279,7 @@ Part 4 는 Part 1(장비)과 Part 3(데이터셋)을, Part 5 는 Part 3·4 를 �
 | `18_aq_tables_dbeaver.sql` | 이식 | 같은 DDL 의 **DBeaver 실행용** 순수 SQL 판 — 블록별로 골라 실행 **(변경 발생)** |
 | `19_aq_verify_dbeaver.sql` | 이식 | 18 실행 결과 확인 — 요약 1개 + 상세 8개 (읽기 전용) |
 | `21`~`25_aq_part*.sql` | 이식 | **파트별 SQL** — 파이프라인 단계마다 DDL + 샘플 데이터 + 확인 + 정리 |
+| `35_ut_update_design.md` | 운영 | 2차 UT 를 합사로 갱신하는 절차 설계 — 백업·갱신·AQ 재생성·되돌리기 (문서) |
 
 ## 파일 동기화
 

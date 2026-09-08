@@ -1,0 +1,50 @@
+Tibero 7 데모 라이선스 재발급 요청 정보
+=========================================
+작성: 2026-09-03   대상 서버: bamboos@192.168.0.101 (사내)
+
+■ 현재 라이선스 (2026-08-19 만료, 세 컨테이너 공용)
+  product              : Tibero
+  version              : 7
+  edition              : standard
+  type                 : real
+  duration             : 30 (일)
+  limit_cpu            : 24
+  identified_by_host   : localhost          ★ 재발급 시 반드시 동일해야 함
+  licensee             : TB_Demo_localhost_2022201
+  serial_ID            : 1784588265
+  issue_date           : 2026/07/21
+  start_date           : 2026/07/21
+  end_date             : 2026/08/19
+
+■ 요청 사항
+  위와 동일 조건으로 재발급.
+  호스트명은 반드시 localhost 로 발급받을 것.
+  -> 세 컨테이너 모두 docker-compose 에 `hostname: localhost` 가 지정돼 있어
+     한 파일로 세 인스턴스를 함께 쓴다. 호스트명이 다르면 부팅되지 않는다.
+
+■ 운영 환경
+  Tibero 7 / 공식 이미지 tiberoofficial/tibero:latest (docker)
+  호스트 OS : Linux x86-64 (Rocky/RHEL 계열, 커널 확인 필요)
+  인스턴스 3개 — 포트 8629(개발) / 18629(1차 UT) / 28629(2차 UT), DB명 모두 TAIMS
+
+■ 함께 문의할 기술 사항 (별건)
+  1) V$SGASTAT 의 SLAB_TCBUF(65MB), SLAB_WLIST(34MB) 는 무엇이며
+     어떤 파라미터로 결정되는가? 공유 풀 가변 영역 279MB 중 이 둘이 99MB 를 차지한다.
+     조정 가능하다면 메모리 증설 없이 여유를 확보할 수 있는지.
+  2) Tibero 7 이 MEMORY_TARGET / 공유 풀의 **온라인 확장**을 지원하는가?
+     지원한다면 재기동 없이 공유 풀을 늘릴 수 있어 운영상 큰 차이가 난다.
+  3) ALTER SYSTEM FLUSH SHARED_POOL 실행 후에도 root allocator 의
+     used size 가 전혀 줄지 않는다(실측: 289,406,976 전후 동일).
+     하위 할당자가 root 로 메모리를 반환하지 않는 것이 정상 동작인가?
+
+  ※ 첨부: $TB_HOME/instance/TAIMS/log/slog/sys.log 의 아래 형태 로그
+     [ALC-xxx] root_malloc failed for extending (SHP slave allocator #0) ...
+       shp alloc: total_size=130023424, max_size=146424972,
+       root alloc: available size=292831232, used size=289406976
+     ERROR_OUT_OF_SHP_FOR_CHUNKTYPE(-3018) ... for SLAB_SC_PIN
+
+■ 발급 후 적용 (재기동 없음)
+  받은 파일을 서버에 두고:
+    cd ~/alex/tibero7_ut_tablename/migration
+    ./33_license_apply.sh status
+    DRYRUN=0 ./33_license_apply.sh deploy <받은파일경로>
