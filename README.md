@@ -282,6 +282,7 @@ Part 4 는 Part 1(장비)과 Part 3(데이터셋)을, Part 5 는 Part 3·4 를 �
 | `35_ut_update_design.md` | 운영 | 2차 UT 를 합사로 갱신하는 절차 설계 — 백업·갱신·AQ 재생성·되돌리기 (문서) |
 | `35_cold_backup.sh` | 운영 | 물리 콜드 백업/복원 — 정지 → data·config·license tar → 재기동 **(파괴적)** |
 | `36_post_refresh_fix.sql` | 운영 | 갱신 후 보정 — tbimport 가 못 만든 테이블 1·MV 1 생성 **(변경 발생)** |
+| `37_aq_lbll_addcol.sql` | 운영 | T_ITSE_LBLL01L 에 PRPG_STRT_DTTM 추가 — 원천 대비 누락분 **(변경 발생)** |
 
 ## 파일 동기화
 

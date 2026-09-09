@@ -264,7 +264,12 @@ CREATE TABLE &SCHEMA..T_ITSE_LBLL01L
     "FILE_PATH"                  VARCHAR2(2000),
     "FILE_NM"                    VARCHAR2(500),
     "FILE_DEL_YN"                VARCHAR2(1),
-    "PRPG_ID"                    VARCHAR2(36)   NOT NULL
+    "PRPG_ID"                    VARCHAR2(36)   NOT NULL,
+    -- 2026-09-08 추가. 원천이 T_ITSE_SNSH_PRPG01L 을 가리키는데 그 PK 가
+    -- (PRPG_ID, PRPG_STRT_DTTM) 복합키라 파티션 키까지 함께 들고 있어야 한다.
+    -- 원천 실측 기준 NULL 허용이다. ANNT01L 은 컬럼 구성이 같아 보이지만
+    -- 원천도 7컬럼이므로 건드리지 않는다.
+    "PRPG_STRT_DTTM"             DATE
 )
 TABLESPACE &TBS_HIST_DATA
 PARTITION BY RANGE("INFO_CRET_DTTM")
