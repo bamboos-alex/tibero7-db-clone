@@ -283,6 +283,7 @@ Part 4 는 Part 1(장비)과 Part 3(데이터셋)을, Part 5 는 Part 3·4 를 �
 | `35_cold_backup.sh` | 운영 | 물리 콜드 백업/복원 — 정지 → data·config·license tar → 재기동 **(파괴적)** |
 | `36_post_refresh_fix.sql` | 운영 | 갱신 후 보정 — tbimport 가 못 만든 테이블 1·MV 1 생성 **(변경 발생)** |
 | `37_aq_lbll_addcol.sql` | 운영 | T_ITSE_LBLL01L 에 PRPG_STRT_DTTM 추가 — 원천 대비 누락분 **(변경 발생)** |
+| `source_ddl_issue.txt` | 대외 | 원천 담당자 확인 요청 — T_ITSE_EQPM_SOP_STPG01L 파티션 정의 (문서) |
 
 ## 파일 동기화
 

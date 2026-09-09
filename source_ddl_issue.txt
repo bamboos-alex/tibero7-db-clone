@@ -1,0 +1,72 @@
+[확인 요청] AIMS_DEV.T_ITSE_EQPM_SOP_STPG01L 파티션 정의가 재생성되지 않습니다
+==============================================================================
+작성: 2026-09-08   수신: 합사 테스트 DB 담당자
+발견 경위: 2차 UT(192.168.0.101:28629)를 합사 기준으로 전량 재적재하던 중
+
+
+■ 한 줄 요약
+  T_ITSE_EQPM_SOP_STPG01L 은 지금 원천에 존재하지만, 자기 자신의 정의로는 다시
+  만들어지지 않습니다. 파티션 키 타입과 파티션 경계 타입이 어긋나 있습니다.
+
+
+■ 대상
+  DB     : 121.137.106.217:58629 / TAIMS
+  테이블 : AIMS_DEV.T_ITSE_EQPM_SOP_STPG01L   (현재 0건)
+
+
+■ 실측 내용 (2026-09-08, DBMS_METADATA.GET_DDL / ALL_TAB_PARTITIONS)
+
+  파티션 키는 문자열인데 경계는 날짜로 잡혀 있습니다.
+
+    SOP_STPG_DTTM   VARCHAR2(14) NOT NULL      <- 파티션 키
+
+    PARTITION P202607 VALUES LESS THAN (TO_DATE('20260801','YYYYMMDD'))
+    PARTITION P202608 VALUES LESS THAN (TO_DATE('20260901000000','YYYYMMDDHH24MISS'))
+    PARTITION P202609 VALUES LESS THAN (TO_DATE('20261001000000','YYYYMMDDHH24MISS'))
+    PARTITION PMAX    VALUES LESS THAN (MAXVALUE)
+
+
+■ 증상
+  tbexport -> tbimport 로 AIMS_DEV 스키마를 그대로 옮기면 이 테이블만 생성에
+  실패합니다.
+
+    [FAILED] TBR-7163: JDBC-7163:Specified partition values are incorrect.
+
+  추출된 DDL 은 원천 정의를 그대로 옮긴 것이고, 원천과 대상 모두 Tibero 7.2 입니다.
+  버전 차이 때문은 아닙니다.
+
+
+■ 왜 확인이 필요한지
+  - 스키마 복제·재구축·복구 시 이 테이블만 조용히 빠집니다. 저희도 검증 단계에서야
+    발견했습니다.
+  - 현재 0건이라 운영 중 드러난 문제는 없습니다. 다만 데이터가 들어간 뒤의 파티션
+    배치·프루닝 동작은 저희가 확인하지 않았습니다. 데이터를 넣기 전에 정리하시는
+    편이 안전해 보입니다.
+  - 이 테이블이 어떤 경로로 지금 형태가 됐는지는 저희가 알 수 없어, 원인 판단은
+    담당자님 쪽이 정확할 것 같습니다.
+
+
+■ 조치 안 (택일)
+  1) 경계를 키 타입에 맞춰 문자열로
+       VALUES LESS THAN ('20260801000000') 형태.
+       YYYYMMDDHH24MISS 는 자리수가 고정이라 사전순 = 시간순이므로 의도한 구간이
+       그대로 유지됩니다. 변경 범위가 작습니다.
+
+  2) 키 컬럼을 DATE 로
+       다른 이력 테이블과 타입 체계를 맞추는 방향입니다. 대신 이 컬럼을 쓰는
+       애플리케이션 코드 확인이 필요합니다.
+
+
+■ 저희 쪽 조치 (참고)
+  UT(2차, 28629)에는 1안으로 생성해 두었습니다. 원천이 정리되면 그에 맞추겠습니다.
+
+
+■ 재현 쿼리
+  SELECT column_name, data_type, data_length
+    FROM all_tab_columns
+   WHERE owner = 'AIMS_DEV' AND table_name = 'T_ITSE_EQPM_SOP_STPG01L';
+
+  SELECT partition_no, partition_name, bound
+    FROM all_tab_partitions
+   WHERE owner = 'AIMS_DEV' AND table_name = 'T_ITSE_EQPM_SOP_STPG01L'
+   ORDER BY partition_no;
